@@ -5,10 +5,10 @@ import { uid } from '../lib/image'
 
 /**
  * Demo 模式：沒有設定 VITE_GAS_URL 時使用，資料只存在這台電腦的瀏覽器。
- * 負責人密碼：admin
+ * 負責人密碼跟正式版一樣：fm1234
  */
-const KEY = 'dinbendon:demo:v2'
-const PASSWORD = 'admin'
+const KEY = 'dinbendon:demo:v4'
+const PASSWORD = 'fm1234'
 
 interface Db {
   weeks: Week[]
@@ -38,7 +38,7 @@ function save(db: Db) {
 }
 
 function auth(pw: string) {
-  if (pw !== PASSWORD) throw new Error('密碼不對（Demo 模式的密碼是 admin）')
+  if (pw !== PASSWORD) throw new Error('密碼不對')
 }
 
 function latest(db: Db): Week | null {
@@ -138,12 +138,12 @@ export function createDemoApi(): Api {
 function seed(): Db {
   const now = new Date().toISOString()
   const items = [
-    { id: 'i_1', name: '招牌排骨便當' },
-    { id: 'i_2', name: '香酥雞腿便當' },
-    { id: 'i_3', name: '三杯雞便當' },
-    { id: 'i_4', name: '滷肉飯便當' },
-    { id: 'i_5', name: '鮭魚便當' },
-    { id: 'i_6', name: '素食便當' },
+    { id: 'i_1', name: '招牌排骨便當', price: 100 },
+    { id: 'i_2', name: '香酥雞腿便當', price: 110 },
+    { id: 'i_3', name: '三杯雞便當', price: 100 },
+    { id: 'i_4', name: '滷肉飯便當', price: 80 },
+    { id: 'i_5', name: '鮭魚便當', price: 130 },
+    { id: 'i_6', name: '素食便當', price: 90 },
   ]
   const week: Week = {
     id: 'w_demo',
@@ -151,7 +151,6 @@ function seed(): Db {
     imageUrl: menuSvg(items),
     deadline: defaultDeadline(),
     items,
-    note: '下週一中午送到一樓櫃台，公司請客，大家吃飽飽～',
     createdAt: now,
     updatedAt: now,
   }
@@ -182,7 +181,6 @@ function menuSvg(items: { name: string }[]): string {
 <rect width="600" height="640" fill="#2f4a3a"/><rect x="18" y="18" width="564" height="604" fill="none" stroke="#c49a5a" stroke-width="14"/>
 <g font-family="Huninn, 'PingFang TC', 'Microsoft JhengHei', sans-serif" fill="#fdf7e3">
 <text x="300" y="110" font-size="56" text-anchor="middle" fill="#ffd23f">阿嬤灶腳便當</text>
-<line x1="70" y1="140" x2="530" y2="140" stroke="#fdf7e3" stroke-width="3" stroke-dasharray="10 8"/>${rows}
-<text x="300" y="600" font-size="22" text-anchor="middle" fill="#c9d8c9">每個便當附湯</text></g></svg>`
+<line x1="70" y1="140" x2="530" y2="140" stroke="#fdf7e3" stroke-width="3" stroke-dasharray="10 8"/>${rows}</g></svg>`
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
 }

@@ -3,14 +3,13 @@
  * 綁定在 Google Sheet 上的 Apps Script（試算表 → 擴充功能 → Apps Script）。
  *
  * 指令碼屬性（專案設定 → 指令碼屬性）：
- *   ADMIN_PASSWORD   負責人密碼（必填）
  *   IMAGE_FOLDER_ID  菜單圖片要放的 Drive 資料夾 ID（選填，沒填會自動建一個「dinbendon 菜單」）
  *
  * 第一次部署前先在編輯器執行一次 setup()，會建立 weeks / orders 兩張工作表。
  */
 
 var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt'];
-var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt']; // 公司請客：一人一個，不算錢
+var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt']; // 公司請客：一人一個；金額照菜單單價算
 
 // ───────────────────────── 進入點
 
@@ -105,7 +104,7 @@ var ACTIONS = {
       for (var i = 0; i < rows.length; i++) if (rows[i].id === w.id) { hit = i; break; }
       var now = new Date().toISOString();
       var items = (w.items || []).map(function (it) {
-        return { id: String(it.id), name: String(it.name).trim() };
+        return { id: String(it.id), name: String(it.name).trim(), price: Math.max(0, Math.round(Number(it.price) || 0)) };
       });
       var row = {
         id: String(w.id),
@@ -153,10 +152,6 @@ var ACTIONS = {
 function setup() {
   ensureSheet_('weeks', WEEK_COLS);
   ensureSheet_('orders', ORDER_COLS);
-  var props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('ADMIN_PASSWORD')) {
-    Logger.log('⚠ 還沒設定 ADMIN_PASSWORD：專案設定 → 指令碼屬性 → 新增');
-  }
   imageFolder_(); // 順便觸發 Drive 授權
   Logger.log('完成，可以部署成網頁應用程式了');
 }
@@ -191,6 +186,7 @@ function castWeek_(r) {
   if (typeof items === 'string') {
     try { items = JSON.parse(items || '[]'); } catch (e) { items = []; }
   }
+  items = items.map(function (it) { return { id: it.id, name: it.name, price: Number(it.price) || 0 }; }); // 舊資料沒有單價
   return {
     id: r.id, shop: r.shop, imageUrl: r.imageUrl, deadline: r.deadline,
     items: items, note: r.note, createdAt: r.createdAt, updatedAt: r.updatedAt,
@@ -254,10 +250,10 @@ function imageFolder_() {
 
 // ───────────────────────── 其他
 
+var ADMIN_PASSWORD = 'fm1234'; // 負責人後台密碼，寫死
+
 function auth_(p) {
-  var pw = PropertiesService.getScriptProperties().getProperty('ADMIN_PASSWORD');
-  if (!pw) throw new Error('後端還沒設定 ADMIN_PASSWORD');
-  if (String(p.password || '') !== pw) throw new Error('密碼不對');
+  if (String(p.password || '') !== ADMIN_PASSWORD) throw new Error('密碼不對');
 }
 
 function withLock_(fn) {

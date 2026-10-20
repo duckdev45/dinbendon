@@ -16,10 +16,11 @@ export function Countdown({ deadline, onClose }: { deadline: string; onClose?: (
     if (closed) onClose?.()
   }, [closed, onClose])
 
+  const leftTone = closed ? 'bg-soy-soft text-rice' : left.urgent ? 'animate-glow bg-stamp text-rice' : 'bg-soy text-yolk'
   return (
-    <div className={`countdown ${left.urgent ? 'countdown--urgent' : ''} ${closed ? 'countdown--closed' : ''}`}>
-      <span className="countdown-when">{formatDeadline(deadline)} 截止</span>
-      <span className="countdown-left">{closed ? '已截止' : `還剩 ${left.text}`}</span>
+    <div className="inline-flex flex-wrap items-stretch overflow-hidden rounded-tile border-3 border-soy bg-rice shadow-pop-sm">
+      <span className="px-3.5 py-1.5">{formatDeadline(deadline)} 截止</span>
+      <span className={`px-3.5 py-1.5 font-num font-semibold tabular-nums ${leftTone}`}>{closed ? '已截止' : `還剩 ${left.text}`}</span>
     </div>
   )
 }

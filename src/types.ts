@@ -1,6 +1,8 @@
 export interface MenuItem {
   id: string
   name: string
+  /** 單價（元），給負責人結算請款；0 = 沒填 */
+  price: number
 }
 
 /** 一週一份菜單 */
@@ -8,10 +10,9 @@ export interface Week {
   id: string
   shop: string
   imageUrl: string
-  /** ISO 時間字串，預設為該週五 14:00（台北時間） */
+  /** ISO 時間字串，預設為該週五 13:00（台北時間） */
   deadline: string
   items: MenuItem[]
-  note: string
   createdAt: string
   updatedAt: string
 }
@@ -32,7 +33,7 @@ export interface Snapshot {
   orders: Order[]
 }
 
-/** 公司每週請客，一人一個便當 */
+/** 公司每週請客，一人一個便當；金額照菜單單價算，負責人拿去請款 */
 export interface PlaceOrderInput {
   weekId: string
   name: string

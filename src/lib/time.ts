@@ -1,23 +1,24 @@
 // 台北沒有日光節約，固定 UTC+8。所有「幾點截止」都以台北時間計算，避免同事電腦時區設錯。
 const TPE_OFFSET = 8 * 3600_000
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六']
+const DEADLINE_HOUR = 13
 
 /** 把時間轉成「台北時間欄位」的 Date（用 getUTC* 讀取） */
 function tpe(d: Date) {
   return new Date(d.getTime() + TPE_OFFSET)
 }
 
-/** 下一個週五 14:00（台北）；若今天已過週五 14:00 就算下週五 */
+/** 開團那週的週五 13:00（台北）；若已過週五 13:00 就算下週五 */
 export function defaultDeadline(now = new Date()): string {
   const t = tpe(now)
   let add = (5 - t.getUTCDay() + 7) % 7
   const at = (days: number) =>
-    Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() + days, 14, 0, 0) - TPE_OFFSET
+    Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() + days, DEADLINE_HOUR, 0, 0) - TPE_OFFSET
   if (at(add) <= now.getTime()) add += 7
   return new Date(at(add)).toISOString()
 }
 
-/** 10/23（五）14:00 */
+/** 10/23（五）13:00 */
 export function formatDeadline(iso: string): string {
   const t = tpe(new Date(iso))
   const hh = String(t.getUTCHours()).padStart(2, '0')

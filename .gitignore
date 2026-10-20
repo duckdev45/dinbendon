@@ -1,4 +1,64 @@
-node_modules
-dist
-.env.local
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+
+# Build output and caches
+dist/
+dist-ssr/
+*.tsbuildinfo
+.vite/
+.vite-temp/
+.cache/
+.eslintcache
+.stylelintcache
+
+# Local environment settings (keep shareable templates)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs and diagnostic reports
+logs/
+*.log
+*.pid
+*.pid.lock
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Test and coverage output
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Local deployment and Google Apps Script credentials
+.vercel/
+.netlify/
+.clasp.json
+.clasprc.json
+
+# Editor settings and temporary files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.iml
+*.swp
+*.swo
+*~
+
+# Operating-system metadata
 .DS_Store
+._*
+.AppleDouble
+.LSOverride
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+$RECYCLE.BIN/

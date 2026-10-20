@@ -21,7 +21,7 @@ export function Bowl({
   const clip = useId().replace(/:/g, '')
   return (
     <svg
-      className={`bowl bowl--${mood} ${className}`}
+      className={`bowl bowl--${mood} overflow-visible ${className}`}
       width={size}
       height={(size * 250) / 260}
       viewBox="0 0 260 250"
@@ -39,7 +39,7 @@ export function Bowl({
         <g className="bowl-steam" fill="none" strokeLinecap="round">
           {STEAM.map((d, i) => (
             <g key={i} className={`steam steam-${i + 1}`}>
-              <path d={d} stroke="var(--soy)" strokeWidth="9" />
+              <path d={d} stroke="var(--color-soy)" strokeWidth="9" />
               <path d={d} stroke="#fff" strokeWidth="4.5" />
             </g>
           ))}
@@ -66,9 +66,9 @@ export function Bowl({
       <g className="bowl-body">
         {/* 筷子 */}
         <g strokeLinecap="round">
-          <line x1="150" y1="72" x2="220" y2="10" stroke="var(--soy)" strokeWidth="10" />
+          <line x1="150" y1="72" x2="220" y2="10" stroke="var(--color-soy)" strokeWidth="10" />
           <line x1="150" y1="72" x2="220" y2="10" stroke="#D9924F" strokeWidth="4" />
-          <line x1="164" y1="76" x2="238" y2="22" stroke="var(--soy)" strokeWidth="10" />
+          <line x1="164" y1="76" x2="238" y2="22" stroke="var(--color-soy)" strokeWidth="10" />
           <line x1="164" y1="76" x2="238" y2="22" stroke="#D9924F" strokeWidth="4" />
         </g>
 
@@ -77,7 +77,7 @@ export function Bowl({
           className="bowl-rice"
           d="M34 114 C 34 76, 64 50, 96 48 C 104 40, 120 38, 132 44 C 146 38, 166 42, 172 50 C 204 56, 226 80, 226 114 Z"
           fill="#fff"
-          stroke="var(--soy)"
+          stroke="var(--color-soy)"
           strokeWidth="4"
           strokeLinejoin="round"
         />
@@ -89,55 +89,55 @@ export function Bowl({
           <ellipse cx="166" cy="102" rx="3" ry="5" transform="rotate(70 166 102)" />
         </g>
         {/* 滷蛋 */}
-        <ellipse cx="96" cy="78" rx="21" ry="17" fill="#C27A3E" stroke="var(--soy)" strokeWidth="4" />
+        <ellipse cx="96" cy="78" rx="21" ry="17" fill="#C27A3E" stroke="var(--color-soy)" strokeWidth="4" />
         <ellipse cx="96" cy="78" rx="13" ry="10" fill="#FFF6E0" />
-        <circle cx="96" cy="78" r="6.5" fill="var(--yolk-deep)" />
+        <circle cx="96" cy="78" r="6.5" fill="var(--color-yolk-deep)" />
         {/* 蔥花 */}
-        <g fill="var(--scallion)" stroke="var(--soy)" strokeWidth="2">
+        <g fill="var(--color-scallion)" stroke="var(--color-soy)" strokeWidth="2">
           <rect x="140" y="84" width="9" height="6" rx="2" transform="rotate(-20 144 87)" />
           <rect x="176" y="70" width="9" height="6" rx="2" transform="rotate(25 180 73)" />
           <rect x="124" y="70" width="8" height="5" rx="2" transform="rotate(10 128 72)" />
         </g>
 
         {/* 碗底座 */}
-        <path d="M92 206 L 98 226 H 162 L 168 206" fill="#fff" stroke="var(--soy)" strokeWidth="4" strokeLinejoin="round" />
+        <path d="M92 206 L 98 226 H 162 L 168 206" fill="#fff" stroke="var(--color-soy)" strokeWidth="4" strokeLinejoin="round" />
         {/* 碗身 */}
         <path d={BODY} fill="#fff" />
         <g clipPath={`url(#${clip})`}>
-          <rect x="0" y="122" width="260" height="7" fill="var(--bowl-blue)" />
-          <rect x="0" y="134" width="260" height="3" fill="var(--bowl-blue)" />
-          <rect x="0" y="200" width="260" height="5" fill="var(--bowl-blue)" />
+          <rect x="0" y="122" width="260" height="7" fill="var(--color-bowl-blue)" />
+          <rect x="0" y="134" width="260" height="3" fill="var(--color-bowl-blue)" />
+          <rect x="0" y="200" width="260" height="5" fill="var(--color-bowl-blue)" />
         </g>
-        <path d={BODY} fill="none" stroke="var(--soy)" strokeWidth="4" strokeLinejoin="round" />
-        <rect x="10" y="106" width="240" height="14" rx="7" fill="#fff" stroke="var(--soy)" strokeWidth="4" />
+        <path d={BODY} fill="none" stroke="var(--color-soy)" strokeWidth="4" strokeLinejoin="round" />
+        <rect x="10" y="106" width="240" height="14" rx="7" fill="#fff" stroke="var(--color-soy)" strokeWidth="4" />
 
         {/* 臉 */}
-        <ellipse cx="80" cy="166" rx="10" ry="5.5" fill="var(--blush)" />
-        <ellipse cx="180" cy="166" rx="10" ry="5.5" fill="var(--blush)" />
+        <ellipse cx="80" cy="166" rx="10" ry="5.5" fill="var(--color-blush)" />
+        <ellipse cx="180" cy="166" rx="10" ry="5.5" fill="var(--color-blush)" />
         {mood === 'idle' && (
           <g className="bowl-eyes">
-            <ellipse cx="102" cy="154" rx="6" ry="7.5" fill="var(--soy)" />
-            <ellipse cx="158" cy="154" rx="6" ry="7.5" fill="var(--soy)" />
+            <ellipse cx="102" cy="154" rx="6" ry="7.5" fill="var(--color-soy)" />
+            <ellipse cx="158" cy="154" rx="6" ry="7.5" fill="var(--color-soy)" />
             <circle cx="104" cy="151" r="2.2" fill="#fff" />
             <circle cx="160" cy="151" r="2.2" fill="#fff" />
           </g>
         )}
         {mood === 'happy' && (
-          <g fill="none" stroke="var(--soy)" strokeWidth="4" strokeLinecap="round">
+          <g fill="none" stroke="var(--color-soy)" strokeWidth="4" strokeLinecap="round">
             <path d="M95 157 Q 102 146 109 157" />
             <path d="M151 157 Q 158 146 165 157" />
           </g>
         )}
         {mood === 'sleep' && (
-          <g fill="none" stroke="var(--soy)" strokeWidth="4" strokeLinecap="round">
+          <g fill="none" stroke="var(--color-soy)" strokeWidth="4" strokeLinecap="round">
             <path d="M95 154 Q 102 160 109 154" />
             <path d="M151 154 Q 158 160 165 154" />
           </g>
         )}
         {mood === 'happy' ? (
-          <path d="M120 160 Q 130 176 140 160 Z" fill="var(--soy)" stroke="var(--soy)" strokeWidth="3" strokeLinejoin="round" />
+          <path d="M120 160 Q 130 176 140 160 Z" fill="var(--color-soy)" stroke="var(--color-soy)" strokeWidth="3" strokeLinejoin="round" />
         ) : (
-          <path d="M122 160 Q 126 166 130 161 Q 134 166 138 160" fill="none" stroke="var(--soy)" strokeWidth="3" strokeLinecap="round" />
+          <path d="M122 160 Q 126 166 130 161 Q 134 166 138 160" fill="none" stroke="var(--color-soy)" strokeWidth="3" strokeLinecap="round" />
         )}
 
         <text className="bowl-text" x="130" y="196" textAnchor="middle">
