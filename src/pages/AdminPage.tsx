@@ -183,18 +183,18 @@ function MenuEditor({
     }
   }
 
-  /** 「排骨便當 95」一行一個 */
+  /** 一行一個；照抄店家菜單時後面帶的價格會自動拿掉 */
   function applyBulk() {
     const parsed = bulk
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
       .map((l) => {
-        const m = l.match(/^(.*?)[\s:：$＄,，]*(\d+)\s*元?$/)
-        return { id: uid('i_'), name: (m ? m[1] : l).trim(), price: m ? Number(m[2]) : 0 }
+        const m = l.match(/^(.*?)[\s:：$＄,，]*\d+\s*元?$/)
+        return { id: uid('i_'), name: (m ? m[1] : l).trim() }
       })
       .filter((it) => it.name)
-    if (parsed.length === 0) return toast.show('沒有讀到品項，一行寫一個，例如「排骨便當 95」', 'error')
+    if (parsed.length === 0) return toast.show('沒有讀到品項，一行寫一個，例如「排骨便當」', 'error')
     set('items', [...draft.items, ...parsed])
     setBulk('')
     setBulkOpen(false)
@@ -205,7 +205,6 @@ function MenuEditor({
     const items = draft.items.map((it) => ({ ...it, name: it.name.trim() })).filter((it) => it.name)
     if (!draft.shop.trim()) return toast.show('填一下店家名稱', 'error')
     if (items.length === 0) return toast.show('至少要有一種便當', 'error')
-    if (items.some((it) => !(it.price >= 0))) return toast.show('價格要是數字', 'error')
     setSaving(true)
     try {
       const saved = await api.admin.saveWeek(pw, { ...draft, shop: draft.shop.trim(), items })
@@ -279,7 +278,7 @@ function MenuEditor({
           </label>
           <label className="field">
             <span className="field-label">給大家的話</span>
-            <textarea rows={2} value={draft.note} onChange={(e) => set('note', e.target.value)} placeholder="例如：下週一中午送到一樓櫃台，記得準備零錢" />
+            <textarea rows={2} value={draft.note} onChange={(e) => set('note', e.target.value)} placeholder="例如：下週一中午送到一樓櫃台" />
           </label>
         </section>
 
@@ -296,7 +295,7 @@ function MenuEditor({
                 rows={5}
                 value={bulk}
                 onChange={(e) => setBulk(e.target.value)}
-                placeholder={'一行一種，名稱後面接價格\n排骨便當 95\n雞腿便當 110'}
+                placeholder={'一行一種\n排骨便當\n雞腿便當'}
               />
               <button className="btn" onClick={applyBulk}>
                 加入清單
@@ -308,24 +307,13 @@ function MenuEditor({
             {draft.items.map((it, i) => (
               <li key={it.id}>
                 <input aria-label={`第 ${i + 1} 種便當名稱`} value={it.name} onChange={(e) => setItem(it.id, { name: e.target.value })} placeholder="便當名稱" />
-                <span className="price-input">
-                  $
-                  <input
-                    aria-label={`${it.name || '便當'} 價格`}
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={Number.isFinite(it.price) ? it.price : ''}
-                    onChange={(e) => setItem(it.id, { price: e.target.value === '' ? NaN : Number(e.target.value) })}
-                  />
-                </span>
                 <button className="icon-btn" aria-label={`刪除 ${it.name}`} onClick={() => set('items', draft.items.filter((x) => x.id !== it.id))}>
                   ×
                 </button>
               </li>
             ))}
           </ul>
-          <button className="btn btn--ghost btn--block" onClick={() => set('items', [...draft.items, { id: uid('i_'), name: '', price: NaN }])}>
+          <button className="btn btn--ghost btn--block" onClick={() => set('items', [...draft.items, { id: uid('i_'), name: '' }])}>
             + 加一種便當
           </button>
         </section>
@@ -341,6 +329,12 @@ function MenuEditor({
 }
 
 // ───────────────────────── 訂單統計
+
+function topText(tops: { name: string; count: number }[]) {
+  if (tops.length === 0) return '還沒有人點'
+  const names = tops.map((s) => s.name).join('、')
+  return tops.length > 1 ? `${names}（各 ${tops[0].count} 人）` : `${names}（${tops[0].count} 人）`
+}
 
 function StatsPanel({
   pw,
@@ -371,7 +365,7 @@ function StatsPanel({
   }, [load])
 
   const stats = useMemo(() => computeStats(snap?.week ?? null, snap?.orders ?? []), [snap])
-  const maxQty = Math.max(1, ...stats.items.map((s) => s.qty))
+  const maxCount = Math.max(1, ...stats.items.map((s) => s.count))
 
   if (weeks.length === 0) {
     return (
@@ -442,7 +436,7 @@ function StatsPanel({
           <button className="btn" onClick={load}>
             重新整理
           </button>
-          <button className="btn" onClick={copyForShop} disabled={!stats.totalQty}>
+          <button className="btn" onClick={copyForShop} disabled={!stats.total}>
             複製給店家
           </button>
           <button className="btn btn--primary" onClick={doExport} disabled={!week || exporting}>
@@ -457,16 +451,12 @@ function StatsPanel({
         <>
           <div className="tiles">
             <div className="tile">
-              <span className="tile-num">{stats.headcount}</span>
+              <span className="tile-num">{stats.total}</span>
               <span className="tile-label">人訂餐</span>
             </div>
-            <div className="tile">
-              <span className="tile-num">{stats.totalQty}</span>
-              <span className="tile-label">個便當</span>
-            </div>
-            <div className="tile tile--money">
-              <span className="tile-num">${stats.totalAmount.toLocaleString()}</span>
-              <span className="tile-label">總金額</span>
+            <div className="tile tile--top">
+              <span className="tile-label">最多人點</span>
+              <span className="tile-top">{topText(stats.tops)}</span>
             </div>
           </div>
 
@@ -474,13 +464,12 @@ function StatsPanel({
             <h2>各便當數量</h2>
             <ul className="bars">
               {stats.items.map((s) => (
-                <li key={s.itemId} className={s.qty === 0 ? 'is-zero' : ''}>
+                <li key={s.itemId} className={s.count === 0 ? 'is-zero' : ''}>
                   <span className="bar-name">{s.name}</span>
                   <span className="bar-track">
-                    <span className="bar-fill" style={{ width: `${(s.qty / maxQty) * 100}%` }} />
+                    <span className="bar-fill" style={{ width: `${(s.count / maxCount) * 100}%` }} />
                   </span>
-                  <span className="bar-qty">{s.qty}</span>
-                  <span className="bar-sub">${s.subtotal.toLocaleString()}</span>
+                  <span className="bar-qty">{s.count}</span>
                   {s.people.length > 0 && <span className="bar-people">{s.people.join('、')}</span>}
                 </li>
               ))}
@@ -498,9 +487,6 @@ function StatsPanel({
                     <tr>
                       <th>姓名</th>
                       <th>便當</th>
-                      <th className="num">數量</th>
-                      <th className="num">小計</th>
-                      <th>備註</th>
                       <th>時間</th>
                       <th>
                         <span className="sr-only">操作</span>
@@ -512,9 +498,6 @@ function StatsPanel({
                       <tr key={o.id}>
                         <td>{o.name}</td>
                         <td>{o.itemName}</td>
-                        <td className="num">{o.qty}</td>
-                        <td className="num">${o.qty * o.price}</td>
-                        <td>{o.note}</td>
                         <td className="muted">{formatTime(o.updatedAt)}</td>
                         <td>
                           <button className="link-btn link-btn--danger" onClick={() => remove(o.id, o.name)}>

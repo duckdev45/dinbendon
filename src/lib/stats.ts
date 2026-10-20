@@ -3,42 +3,35 @@ import type { Order, Week } from '../types'
 export interface ItemStat {
   itemId: string
   name: string
-  price: number
-  qty: number
-  subtotal: number
+  count: number
   people: string[]
 }
 
 export interface Stats {
   items: ItemStat[]
-  totalQty: number
-  totalAmount: number
-  headcount: number
+  /** 一人一個，所以訂餐人數 = 便當數 */
+  total: number
+  /** 最多人點的便當，平手就全部列出 */
+  tops: ItemStat[]
 }
 
 /** 依菜單順序統計；菜單上已刪掉但有人點過的品項會排在最後 */
 export function computeStats(week: Week | null, orders: Order[]): Stats {
   const map = new Map<string, ItemStat>()
-  week?.items.forEach((it) =>
-    map.set(it.id, { itemId: it.id, name: it.name, price: it.price, qty: 0, subtotal: 0, people: [] }),
-  )
+  week?.items.forEach((it) => map.set(it.id, { itemId: it.id, name: it.name, count: 0, people: [] }))
   for (const o of orders) {
     let s = map.get(o.itemId)
     if (!s) {
-      s = { itemId: o.itemId, name: o.itemName, price: o.price, qty: 0, subtotal: 0, people: [] }
+      s = { itemId: o.itemId, name: o.itemName, count: 0, people: [] }
       map.set(o.itemId, s)
     }
-    s.qty += o.qty
-    s.subtotal += o.qty * o.price
-    s.people.push(o.qty > 1 ? `${o.name}×${o.qty}` : o.name)
+    s.count += 1
+    s.people.push(o.name)
   }
   const items = [...map.values()]
-  return {
-    items,
-    totalQty: items.reduce((a, b) => a + b.qty, 0),
-    totalAmount: items.reduce((a, b) => a + b.subtotal, 0),
-    headcount: new Set(orders.map((o) => normName(o.name))).size,
-  }
+  const max = Math.max(0, ...items.map((s) => s.count))
+  const tops = max > 0 ? items.filter((s) => s.count === max) : []
+  return { items, total: orders.length, tops }
 }
 
 export function normName(name: string) {
@@ -47,6 +40,6 @@ export function normName(name: string) {
 
 /** 打電話給店家用的文字 */
 export function shopText(week: Week, stats: Stats): string {
-  const lines = stats.items.filter((s) => s.qty > 0).map((s) => `${s.name} × ${s.qty}`)
-  return [`${week.shop || '便當'} 訂單`, ...lines, `共 ${stats.totalQty} 個，$${stats.totalAmount}`].join('\n')
+  const lines = stats.items.filter((s) => s.count > 0).map((s) => `${s.name} × ${s.count}`)
+  return [`${week.shop || '便當'} 訂單`, ...lines, `共 ${stats.total} 個`].join('\n')
 }

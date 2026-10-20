@@ -22,8 +22,6 @@ export function OrderPage() {
   const [loadError, setLoadError] = useState('')
   const [name, setName] = useState(readName)
   const [itemId, setItemId] = useState('')
-  const [qty, setQty] = useState(1)
-  const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [celebrate, setCelebrate] = useState(false)
   const [zoom, setZoom] = useState(false)
@@ -58,11 +56,7 @@ export function OrderPage() {
 
   // 名字對到已經點過的訂單，就把表單帶成那筆
   useEffect(() => {
-    if (mine) {
-      setItemId(mine.itemId)
-      setQty(mine.qty)
-      setNote(mine.note)
-    }
+    if (mine) setItemId(mine.itemId)
   }, [mine?.id, mine?.updatedAt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const mood: BowlMood = celebrate ? 'happy' : closed ? 'sleep' : 'idle'
@@ -75,13 +69,13 @@ export function OrderPage() {
     setBusy(true)
     try {
       const updating = !!mine
-      const order = await api.placeOrder({ weekId: week.id, name, itemId, qty, note })
+      const order = await api.placeOrder({ weekId: week.id, name, itemId })
       try {
         localStorage.setItem(NAME_KEY, name.trim())
       } catch {
         /* ignore */
       }
-      toast.show(`${updating ? '更新好了' : '訂好了'}：${order.itemName} × ${order.qty}`)
+      toast.show(`${updating ? '換好了' : '訂好了'}：${order.itemName}`)
       setCelebrate(true)
       window.setTimeout(() => setCelebrate(false), 1800)
       await refresh()
@@ -101,8 +95,6 @@ export function OrderPage() {
       await api.cancelOrder(week.id, mine.name)
       toast.show('訂單已取消')
       setItemId('')
-      setQty(1)
-      setNote('')
       await refresh()
     } catch (err) {
       toast.show((err as Error).message, 'error')
@@ -171,8 +163,7 @@ export function OrderPage() {
               <div className="stamp">已截止</div>
               {mine ? (
                 <p>
-                  你這週點的是 <b>{mine.itemName}</b> × {mine.qty}
-                  {mine.note && `（${mine.note}）`}，等開飯！
+                  你這週點的是 <b>{mine.itemName}</b>，等開飯！
                 </p>
               ) : (
                 <p className="muted">這週的訂單已經收齊，下週記得早點點。要補點請直接找負責人。</p>
@@ -194,8 +185,7 @@ export function OrderPage() {
               {mine && (
                 <div className="mine">
                   <span>
-                    你已經點了 <b>{mine.itemName}</b> × {mine.qty}
-                    {mine.note && `（${mine.note}）`}。改完按「更新我的訂單」就好。
+                    你已經點了 <b>{mine.itemName}</b>。想換別的，選好再按「換這個便當」。
                   </span>
                   <button type="button" className="link-btn" onClick={cancel} disabled={busy}>
                     取消訂單
@@ -207,50 +197,21 @@ export function OrderPage() {
                 <legend className="field-label">選便當</legend>
                 <div className="items" role="radiogroup">
                   {week.items.map((it) => {
-                    const count = stats.items.find((s) => s.itemId === it.id)?.qty ?? 0
+                    const count = stats.items.find((s) => s.itemId === it.id)?.count ?? 0
                     const on = it.id === itemId
                     return (
                       <label key={it.id} className={`item ${on ? 'item--on' : ''}`}>
                         <input type="radio" name="item" value={it.id} checked={on} onChange={() => setItemId(it.id)} />
                         <span className="item-name">{it.name}</span>
-                        <span className="item-meta">
-                          <span className="item-price">${it.price}</span>
-                          {count > 0 && <span className="item-count">{count} 份</span>}
-                        </span>
+                        <span className="item-count">{count > 0 ? `${count} 人點了` : '還沒人點'}</span>
                       </label>
                     )
                   })}
                 </div>
               </fieldset>
 
-              <div className="field-row">
-                <div className="field">
-                  <span className="field-label" id="qty-label">
-                    數量
-                  </span>
-                  <div className="stepper" role="group" aria-labelledby="qty-label">
-                    <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="少一個">
-                      −
-                    </button>
-                    <output>{qty}</output>
-                    <button type="button" onClick={() => setQty((q) => Math.min(20, q + 1))} aria-label="多一個">
-                      +
-                    </button>
-                  </div>
-                </div>
-                <label className="field field--grow">
-                  <span className="field-label">備註</span>
-                  <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="飯少、不要辣、加滷蛋…" maxLength={100} />
-                </label>
-              </div>
-
-              <button className="btn btn--primary btn--big" disabled={busy}>
-                {busy ? '送出中…' : mine ? '更新我的訂單' : '訂便當'}
-                {!busy && itemId && (
-                  <span className="btn-sum">
-                    ${(week.items.find((i) => i.id === itemId)?.price ?? 0) * qty}
-                  </span>
-                )}
+              <button className="btn btn--primary btn--big" disabled={busy || (!!mine && mine.itemId === itemId)}>
+                {busy ? '送出中…' : mine ? (mine.itemId === itemId ? '已經訂好了' : '換這個便當') : '訂便當'}
               </button>
             </form>
           )}
@@ -259,7 +220,7 @@ export function OrderPage() {
 
       <section className="who">
         <h2>
-          已經點的人 <span className="who-count">{stats.headcount} 人・{stats.totalQty} 個便當</span>
+          已經點的人 <span className="who-count">{stats.total} 人</span>
         </h2>
         {orders.length === 0 ? (
           <p className="muted">還沒有人點，當第一個吧！</p>
@@ -268,10 +229,7 @@ export function OrderPage() {
             {orders.map((o) => (
               <li key={o.id} className={mine?.id === o.id ? 'is-me' : ''}>
                 <b>{o.name}</b>
-                <span>
-                  {o.itemName}
-                  {o.qty > 1 && ` ×${o.qty}`}
-                </span>
+                <span>{o.itemName}</span>
               </li>
             ))}
           </ul>

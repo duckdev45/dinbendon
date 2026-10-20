@@ -1,7 +1,6 @@
 export interface MenuItem {
   id: string
   name: string
-  price: number
 }
 
 /** 一週一份菜單 */
@@ -22,11 +21,8 @@ export interface Order {
   weekId: string
   name: string
   itemId: string
-  /** 下單當下的便當名稱與價格快照，菜單之後改了也不影響 */
+  /** 下單當下的便當名稱快照，菜單之後改了也不影響 */
   itemName: string
-  price: number
-  qty: number
-  note: string
   createdAt: string
   updatedAt: string
 }
@@ -36,12 +32,11 @@ export interface Snapshot {
   orders: Order[]
 }
 
+/** 公司每週請客，一人一個便當 */
 export interface PlaceOrderInput {
   weekId: string
   name: string
   itemId: string
-  qty: number
-  note: string
 }
 
 export type WeekDraft = Omit<Week, 'createdAt' | 'updatedAt'>

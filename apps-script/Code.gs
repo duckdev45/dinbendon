@@ -10,7 +10,7 @@
  */
 
 var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt'];
-var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'price', 'qty', 'note', 'createdAt', 'updatedAt'];
+var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt']; // 公司請客：一人一個，不算錢
 
 // ───────────────────────── 進入點
 
@@ -44,7 +44,6 @@ var ACTIONS = {
       if (!item) throw new Error('這個便當已經被負責人拿掉了，重新整理再選一次');
       var name = String(p.name || '').trim().slice(0, 20);
       if (!name) throw new Error('要填名字，負責人才知道便當是誰的');
-      var qty = Math.max(1, Math.min(20, Math.floor(Number(p.qty)) || 1));
       var now = new Date().toISOString();
 
       var sheet = sheet_('orders');
@@ -59,9 +58,6 @@ var ACTIONS = {
         name: name,
         itemId: item.id,
         itemName: item.name,
-        price: Number(item.price),
-        qty: qty,
-        note: String(p.note || '').trim().slice(0, 100),
         createdAt: hit >= 0 ? rows[hit].createdAt : now,
         updatedAt: now,
       };
@@ -109,7 +105,7 @@ var ACTIONS = {
       for (var i = 0; i < rows.length; i++) if (rows[i].id === w.id) { hit = i; break; }
       var now = new Date().toISOString();
       var items = (w.items || []).map(function (it) {
-        return { id: String(it.id), name: String(it.name).trim(), price: Number(it.price) || 0 };
+        return { id: String(it.id), name: String(it.name).trim() };
       });
       var row = {
         id: String(w.id),
@@ -204,7 +200,6 @@ function castWeek_(r) {
 function castOrder_(r) {
   return {
     id: r.id, weekId: r.weekId, name: r.name, itemId: r.itemId, itemName: r.itemName,
-    price: Number(r.price) || 0, qty: Number(r.qty) || 1, note: r.note,
     createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
