@@ -5,7 +5,7 @@ export type BowlMood = 'idle' | 'happy' | 'sleep'
 const STEAM = ['M88 38 C 80 28, 96 20, 88 6', 'M118 34 C 110 22, 126 14, 118 0', 'M148 38 C 140 28, 156 20, 148 6']
 const BODY = 'M18 114 C 18 178, 66 214, 130 214 C 194 214, 242 178, 242 114 Z'
 
-/** 甲奔碗公：idle 會呼吸冒煙、happy 跳起來、sleep 截止後睡覺 */
+/** 碗公：idle 會呼吸冒煙、happy 跳起來、sleep 截止後睡覺 */
 export function Bowl({
   mood = 'idle',
   size = 260,
@@ -25,7 +25,7 @@ export function Bowl({
       width={size}
       height={(size * 250) / 260}
       viewBox="0 0 260 250"
-      {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': '寫著「甲奔！」的碗公' })}
+      {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': '碗公' })}
     >
       <defs>
         <clipPath id={clip}>
@@ -139,10 +139,6 @@ export function Bowl({
         ) : (
           <path d="M122 160 Q 126 166 130 161 Q 134 166 138 160" fill="none" stroke="var(--color-soy)" strokeWidth="3" strokeLinecap="round" />
         )}
-
-        <text className="bowl-text" x="130" y="196" textAnchor="middle">
-          甲奔！
-        </text>
       </g>
     </svg>
   )

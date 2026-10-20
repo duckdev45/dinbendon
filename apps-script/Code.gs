@@ -8,8 +8,13 @@
  * 第一次部署前先在編輯器執行一次 setup()，會建立 weeks / orders 兩張工作表。
  */
 
-var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt'];
-var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt']; // 公司請客：一人一個；金額照菜單單價算
+// 新欄位只能加在最後：讀寫都照欄位順序，舊試算表的表頭會自動補上
+var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt', 'kind', 'addons', 'host', 'mode'];
+var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt', 'options', 'addonIds']; // 一人一份；金額照菜單單價＋加料算
+
+// 跟前端 src/lib/drink.ts 同一份清單
+var SUGAR = ['正常糖', '少糖', '半糖', '微糖', '無糖'];
+var ICE = ['正常冰', '少冰', '微冰', '去冰', '溫', '熱'];
 
 // ───────────────────────── 進入點
 
@@ -29,9 +34,15 @@ function doPost(e) {
 }
 
 var ACTIONS = {
+  // 便當永遠是最新一筆便當菜單；飲料團只在收單中才回傳
   getCurrent: function () {
-    var week = latestWeek_();
-    return snapshot_(week);
+    var weeks = allWeeks_();
+    var bento = weeks.filter(function (w) { return w.kind !== 'drink'; })[0] || null;
+    var drink = weeks.filter(function (w) { return w.kind === 'drink'; })[0] || null;
+    if (drink && Date.now() >= new Date(drink.deadline).getTime()) drink = null;
+    var cur = snapshot_(bento);
+    cur.drink = drink ? snapshot_(drink) : null;
+    return cur;
   },
 
   placeOrder: function (p) {
@@ -43,6 +54,16 @@ var ACTIONS = {
       if (!item) throw new Error('這個便當已經被負責人拿掉了，重新整理再選一次');
       var name = String(p.name || '').trim().slice(0, 20);
       if (!name) throw new Error('要填名字，負責人才知道便當是誰的');
+      var options = '';
+      var addonIds = [];
+      if (week.kind === 'drink') {
+        if (SUGAR.indexOf(p.sugar) < 0) throw new Error('選一下甜度');
+        if (ICE.indexOf(p.ice) < 0) throw new Error('選一下冰量');
+        // 加料單選：只取菜單上有的第一個
+        var picked = week.addons.filter(function (a) { return (p.addonIds || []).indexOf(a.id) >= 0; }).slice(0, 1);
+        addonIds = picked.map(function (a) { return a.id; });
+        options = [p.sugar, p.ice].concat(picked.map(function (a) { return '+' + a.name; })).join(' ');
+      }
       var now = new Date().toISOString();
 
       var sheet = sheet_('orders');
@@ -59,6 +80,8 @@ var ACTIONS = {
         itemName: item.name,
         createdAt: hit >= 0 ? rows[hit].createdAt : now,
         updatedAt: now,
+        options: options,
+        addonIds: JSON.stringify(addonIds),
       };
       writeRow_(sheet, ORDER_COLS, order, hit >= 0 ? hit + 2 : null);
       return castOrder_(order);
@@ -79,22 +102,18 @@ var ACTIONS = {
   },
 
   adminVerify: function (p) {
-    auth_(p);
     return null;
   },
 
   adminListWeeks: function (p) {
-    auth_(p);
     return allWeeks_();
   },
 
   adminGetWeek: function (p) {
-    auth_(p);
     return snapshot_(findWeek_(p.weekId));
   },
 
   adminSaveWeek: function (p) {
-    auth_(p);
     return withLock_(function () {
       var w = p.week || {};
       if (!w.id) throw new Error('缺少菜單 id');
@@ -103,18 +122,24 @@ var ACTIONS = {
       var hit = -1;
       for (var i = 0; i < rows.length; i++) if (rows[i].id === w.id) { hit = i; break; }
       var now = new Date().toISOString();
-      var items = (w.items || []).map(function (it) {
+      var clean = function (it) {
         return { id: String(it.id), name: String(it.name).trim(), price: Math.max(0, Math.round(Number(it.price) || 0)) };
-      });
+      };
+      var items = (w.items || []).map(clean);
+      var kind = w.kind === 'drink' ? 'drink' : 'bento';
       var row = {
         id: String(w.id),
         shop: String(w.shop || ''),
         imageUrl: String(w.imageUrl || ''),
         deadline: new Date(w.deadline).toISOString(),
         items: JSON.stringify(items),
-        note: String(w.note || ''),
+        note: '',
         createdAt: hit >= 0 ? rows[hit].createdAt : now,
         updatedAt: now,
+        kind: kind,
+        addons: JSON.stringify(kind === 'drink' ? (w.addons || []).map(clean) : []),
+        host: kind === 'drink' ? String(w.host || '').trim().slice(0, 20) : '',
+        mode: w.mode === 'group' ? 'group' : 'treat', // 飲料團：treat 抖內、group 揪團
       };
       writeRow_(sheet, WEEK_COLS, row, hit >= 0 ? hit + 2 : null);
       return castWeek_(row);
@@ -122,7 +147,6 @@ var ACTIONS = {
   },
 
   adminUploadImage: function (p) {
-    auth_(p);
     var m = String(p.dataUrl || '').match(/^data:(.+?);base64,(.+)$/);
     if (!m) throw new Error('圖片格式不對');
     var blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], p.filename || 'menu.jpg');
@@ -137,7 +161,6 @@ var ACTIONS = {
   },
 
   adminDeleteOrder: function (p) {
-    auth_(p);
     return withLock_(function () {
       var sheet = sheet_('orders');
       var rows = readRows_(sheet, ORDER_COLS);
@@ -164,10 +187,6 @@ function allWeeks_() {
     .sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
 }
 
-function latestWeek_() {
-  return allWeeks_()[0] || null;
-}
-
 function findWeek_(id) {
   return allWeeks_().filter(function (w) { return w.id === id; })[0] || null;
 }
@@ -181,21 +200,27 @@ function snapshot_(week) {
   return { week: week, orders: orders };
 }
 
+function parseList_(v) {
+  if (typeof v !== 'string') return v || [];
+  try { return JSON.parse(v || '[]'); } catch (e) { return []; }
+}
+
+function castItems_(v) {
+  return parseList_(v).map(function (it) { return { id: it.id, name: it.name, price: Number(it.price) || 0 }; }); // 舊資料沒有單價
+}
+
 function castWeek_(r) {
-  var items = r.items;
-  if (typeof items === 'string') {
-    try { items = JSON.parse(items || '[]'); } catch (e) { items = []; }
-  }
-  items = items.map(function (it) { return { id: it.id, name: it.name, price: Number(it.price) || 0 }; }); // 舊資料沒有單價
   return {
-    id: r.id, shop: r.shop, imageUrl: r.imageUrl, deadline: r.deadline,
-    items: items, note: r.note, createdAt: r.createdAt, updatedAt: r.updatedAt,
+    id: r.id, kind: r.kind === 'drink' ? 'drink' : 'bento', shop: r.shop, imageUrl: r.imageUrl, deadline: r.deadline,
+    items: castItems_(r.items), addons: castItems_(r.addons), host: r.host || '', mode: r.mode === 'group' ? 'group' : 'treat',
+    createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
 
 function castOrder_(r) {
   return {
     id: r.id, weekId: r.weekId, name: r.name, itemId: r.itemId, itemName: r.itemName,
+    options: r.options || '', addonIds: parseList_(r.addonIds),
     createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
@@ -215,6 +240,9 @@ function ensureSheet_(name, cols) {
     sh.getRange(1, 1, sh.getMaxRows(), cols.length).setNumberFormat('@');
     sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
     sh.setFrozenRows(1);
+  } else if (sh.getLastColumn() < cols.length) {
+    // 舊試算表補上新欄位的表頭
+    sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
   }
   return sh;
 }
@@ -250,11 +278,6 @@ function imageFolder_() {
 
 // ───────────────────────── 其他
 
-var ADMIN_PASSWORD = 'fm1234'; // 負責人後台密碼，寫死
-
-function auth_(p) {
-  if (String(p.password || '') !== ADMIN_PASSWORD) throw new Error('密碼不對');
-}
 
 function withLock_(fn) {
   var lock = LockService.getScriptLock();

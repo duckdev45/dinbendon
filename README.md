@@ -31,13 +31,13 @@ pnpm install
 pnpm dev
 ```
 
-沒設定 `VITE_GAS_URL` 時是 **Demo 模式**：資料存在瀏覽器 localStorage，附一份假菜單和幾筆訂單，負責人密碼跟正式版一樣。想重來就在 DevTools 刪掉 `dinbendon:demo:v4`。
+沒設定 `VITE_GAS_URL` 時是 **Demo 模式**：資料存在瀏覽器 localStorage，附一份假菜單和幾筆訂單。想重來就在 DevTools 刪掉 `dinbendon:demo:v5`。
 
 ## 接上 Google Sheet
 
 1. 開一個新的 Google 試算表（例如「甲奔訂便當」）。
 2. 擴充功能 → Apps Script，把 `apps-script/Code.gs` 貼進去；在「專案設定」勾選顯示 `appsscript.json`，用本 repo 的內容覆蓋。
-3. 負責人密碼寫死在 `Code.gs` 的 `ADMIN_PASSWORD`，要換就改那行再部署新版本。想指定圖片資料夾，到專案設定 → 指令碼屬性加 `IMAGE_FOLDER_ID`。
+3. 訂單管理（`#/admin`）不用密碼，知道網址就能進。想指定圖片資料夾，到專案設定 → 指令碼屬性加 `IMAGE_FOLDER_ID`。
 4. 在編輯器選 `setup` 執行一次，照指示授權。會建立 `weeks`、`orders` 兩張表和「dinbendon 菜單」資料夾。
 5. 部署 → 新增部署作業 → 網頁應用程式：執行身分「我」、存取權「所有人」。複製 `.../exec` 網址。
 6. 專案根目錄建立 `.env.local`：
@@ -60,6 +60,10 @@ GitHub repo 匯入 Vercel 即可，會自動偵測 Vite + pnpm（`pnpm build`，
 ## 樣式
 
 Tailwind CSS v4，設定都在 `src/styles.css`：`@theme` 是顏色（`yolk`、`soy`、`stamp`…）、字型、陰影等 token，`@layer components` 只放到處重複的 `btn`、`card`、`field`、`pill`、`page`，其他都直接寫 utility。碗公 SVG 的動畫依 mood 切換，維持一般 CSS。
+
+## 飲料 Bonus（抖內／揪團）
+
+後台「飲料 Bonus」填自己的名字、選**抖內**（我請大家喝）或**揪團**（各付各的），拉一下拉霸機抽今天喝哪家（只能用抽的，開團後不能換）、設截止時間（預設開團後 1 小時）、按「開團！」。收單中時點餐頁會從畫面中間彈出飲料卡片：選飲料、甜度、冰量、加料，一人一杯，一律 L，加料單選，飲料不設上限。揪團時「複製訂單」和 Excel 每人後面會帶要付的錢。統計、Excel、複製給店家都會帶甜度冰量加料。飲料店清單在 `src/shops.ts` 的 `DRINK_SHOPS`（15 家高雄的店），logo 在 `public/logos/`，logo 留空的店會用店名文字章代替。
 
 ## 常用店家
 

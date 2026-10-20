@@ -1,11 +1,12 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {api} from '../api'
-import {Bowl} from '../components/Bowl'
+import {SlotMachine} from '../components/SlotMachine'
 import {useToast} from '../components/Toast'
 import {exportExcel} from '../lib/excel'
 import {shrinkImage, uid} from '../lib/image'
-import {MAX_PRICE, SHOPS} from '../shops'
-import {computeStats, shopText} from '../lib/stats'
+import {DRINK_SHOPS, MAX_PRICE, SHOPS} from '../shops'
+import {currentRounds} from '../lib/drink'
+import {computeStats, drinkSummary, orderLabel, orderPrice, shopText} from '../lib/stats'
 import {
     defaultDeadline,
     formatDay,
@@ -15,89 +16,31 @@ import {
     isClosed,
     toLocalInput
 } from '../lib/time'
-import type {MenuItem, Snapshot, Week, WeekDraft} from '../types'
+import type {MenuItem, RoundKind, Snapshot, Week, WeekDraft} from '../types'
 
-const PW_KEY = 'dinbendon:admin'
-
-function readPw() {
-    try {
-        return sessionStorage.getItem(PW_KEY) ?? ''
-    } catch {
-        return ''
-    }
-}
-
+// 訂單管理不用密碼，知道網址就能進；API 的 password 參數留著傳空字串，後端已不檢查
 export function AdminPage() {
-    const [pw, setPw] = useState(readPw)
-    const [authed, setAuthed] = useState(false)
-    const [checking, setChecking] = useState(!!readPw())
     const toast = useToast()
-
-    useEffect(() => {
-        if (!pw || authed) return
-        // 同一個分頁重新整理不用再打一次密碼
-        api.admin
-            .verify(pw)
-            .then(() => setAuthed(true))
-            .catch(() => setPw(''))
-            .finally(() => setChecking(false))
-    }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-    async function login(e: React.FormEvent) {
-        e.preventDefault()
-        setChecking(true)
-        try {
-            await api.admin.verify(pw)
-            try {
-                sessionStorage.setItem(PW_KEY, pw)
-            } catch {
-                /* ignore */
-            }
-            toast.clear()
-            setAuthed(true)
-        } catch (err) {
-            toast.show((err as Error).message, 'error')
-        } finally {
-            setChecking(false)
-        }
-    }
-
-    if (!authed) {
-        return (
-            <main className="page flex min-h-[70vh] flex-col items-center justify-center gap-3 text-center">
-                {toast.node}
-                <form className="card flex w-[min(360px,100%)] flex-col items-center gap-3.5" onSubmit={login}>
-                    <Bowl size={140}/>
-                    <h1 className="text-[2rem]">訂單管理</h1>
-                    <label className="field w-full text-left">
-                        <span className="field-label">負責人密碼</span>
-                        <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus
-                               autoComplete="current-password"/>
-                    </label>
-                    <button className="btn btn-primary" disabled={checking || !pw}>
-                        {checking ? '確認中…' : '進入後台'}
-                    </button>
-                </form>
-            </main>
-        )
-    }
-
-    return <AdminConsole pw={pw} toast={toast}/>
+    return <AdminConsole pw="" toast={toast}/>
 }
 
-type Tab = 'menu' | 'stats'
+type Tab = 'menu' | 'drink' | 'stats'
 
 const TAB = 'cursor-pointer px-5 py-2 text-soy aria-selected:bg-soy aria-selected:text-yolk'
 
 function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToast> }) {
-    const [tab, setTab] = useState<Tab>('stats')
+    // 從點餐頁「開便當團 / 開飲料團」過來會帶 #/admin/menu、#/admin/drink
+    const [tab, setTab] = useState<Tab>(() => {
+        const t = window.location.hash.split('/')[2]
+        return t === 'menu' || t === 'drink' ? t : 'stats'
+    })
     const [weeks, setWeeks] = useState<Week[] | null>(null)
 
     const loadWeeks = useCallback(async () => {
         try {
             const list = await api.admin.listWeeks(pw)
             setWeeks(list)
-            if (list.length === 0) setTab('menu')
+            if (list.length === 0) setTab((t) => (t === 'stats' ? 'menu' : t))
         } catch (e) {
             toast.show((e as Error).message, 'error')
         }
@@ -121,14 +64,21 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                             onClick={() => setTab('menu')}>
                         菜單設定
                     </button>
+                    <button role="tab" className={`${TAB} border-l-3 border-soy`} aria-selected={tab === 'drink'}
+                            onClick={() => setTab('drink')}>
+                        飲料 Bonus
+                    </button>
                 </div>
             </div>
             {!weeks ? (
                 <p className="text-soy-soft">載入中…</p>
-            ) : tab === 'menu' ? (
+            ) : tab !== 'stats' ? (
                 <MenuEditor
+                    key={tab}
+                    kind={tab === 'drink' ? 'drink' : 'bento'}
                     pw={pw}
-                    current={weeks[0] ?? null}
+                    // 飲料團只接著編收單中的那團，截止了就開新的
+                    current={currentRounds(weeks)[tab === 'drink' ? 'drink' : 'bento']}
                     toast={toast}
                     onSaved={async () => {
                         await loadWeeks()
@@ -143,22 +93,38 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
 
 // ───────────────────────── 菜單設定
 
-function blankDraft(): WeekDraft {
-    return {id: uid('w_'), shop: '', imageUrl: '', deadline: defaultDeadline(), items: []}
+/** 飲料團預設開團後 1 小時截止 */
+const drinkDeadline = () => new Date(Date.now() + 3600_000).toISOString()
+
+function blankDraft(kind: RoundKind): WeekDraft {
+    const deadline = kind === 'drink' ? drinkDeadline() : defaultDeadline()
+    // 飲料團預設由自己開（點餐頁記住的名字）、抖內
+    let host = ''
+    try {
+        host = kind === 'drink' ? localStorage.getItem('dinbendon:name') ?? '' : ''
+    } catch {
+        /* ignore */
+    }
+    return {id: uid('w_'), kind, shop: '', imageUrl: '', deadline, items: [], addons: [], host, mode: 'treat'}
 }
 
 function MenuEditor({
+                        kind,
                         pw,
                         current,
                         toast,
                         onSaved,
                     }: {
+    kind: RoundKind
     pw: string
     current: Week | null
     toast: ReturnType<typeof useToast>
     onSaved: () => Promise<void>
 }) {
-    const [draft, setDraft] = useState<WeekDraft>(() => current ?? blankDraft())
+    const drink = kind === 'drink'
+    const unit = drink ? '飲料' : '便當'
+    // 舊後端的資料沒有 addons，補空陣列
+    const [draft, setDraft] = useState<WeekDraft>(() => (current ? {...current, addons: current.addons ?? []} : blankDraft(kind)))
     const [isNew, setIsNew] = useState(!current)
     const [uploading, setUploading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -167,36 +133,35 @@ function MenuEditor({
     const fileRef = useRef<HTMLInputElement>(null)
 
     const set = <K extends keyof WeekDraft>(k: K, v: WeekDraft[K]) => setDraft((d) => ({...d, [k]: v}))
-    const setItem = (id: string, patch: Partial<MenuItem>) =>
-        set(
-            'items',
-            draft.items.map((it) => (it.id === id ? {...it, ...patch} : it)),
-        )
-
     function startNewWeek() {
-        if (!window.confirm('開新的一週會建立一份空白菜單，上週的訂單仍然保留在「訂單統計」。要繼續嗎？')) return
+        if (!window.confirm(`開新的${drink ? '飲料團' : '一週'}會建立一份新菜單，之前的訂單仍然保留在「訂單統計」。要繼續嗎？`)) return
         // 店家通常不常換，把店名和品項帶過來，負責人只要改不一樣的地方
         setDraft({
-            ...blankDraft(),
+            ...blankDraft(kind),
             shop: draft.shop,
+            imageUrl: draft.imageUrl,
             items: draft.items.map((it) => ({...it, id: uid('i_')})),
+            addons: draft.addons.map((it) => ({...it, id: uid('a_')})),
         })
         setIsNew(true)
     }
 
-    /** 選常用店家就整份帶入；選「其他」清空讓負責人自己填 */
+    /** 選常用店家就整份帶入；便當選「其他」清空讓負責人自己填，飲料只能拉霸抽 */
     function pickShop(name: string) {
-        const s = SHOPS.find((x) => x.shop === name)
+        const s = (drink ? DRINK_SHOPS : SHOPS).find((x) => x.shop === name)
+        const ds = DRINK_SHOPS.find((x) => drink && x.shop === name)
+        const addons = ds?.addons ?? []
+        // 同名品項沿用原本的 id，已經有人點的訂單才對得上
+        const keep = (list: MenuItem[], rows: [string, number][], prefix: string) =>
+            rows.map(([name, price]) => ({id: list.find((x) => x.name === name)?.id ?? uid(prefix), name, price}))
         setDraft((d) => ({
             ...d,
             shop: s?.shop ?? '',
-            imageUrl: s?.image ?? '',
-            // 同名品項沿用原本的 id，這週已經有人點的訂單才對得上
-            items: s ? s.items.filter(([, price]) => price <= MAX_PRICE).map(([name, price]) => ({
-                id: d.items.find((x) => x.name === name)?.id ?? uid('i_'),
-                name,
-                price
-            })) : [],
+            // 飲料團不放菜單照片，imageUrl 存店家 logo
+            imageUrl: ds ? ds.logo : SHOPS.find((x) => x.shop === name)?.image ?? '',
+            // 便當超過上限的不帶入；飲料不設限
+            items: s ? keep(d.items, s.items.filter(([, price]) => drink || price <= MAX_PRICE), 'i_') : [],
+            addons: keep(d.addons, addons, 'a_'),
         }))
     }
 
@@ -231,20 +196,24 @@ function MenuEditor({
         set('items', [...draft.items, ...parsed])
         setBulk('')
         setBulkOpen(false)
-        toast.show(`加入 ${parsed.length} 種便當`)
+        toast.show(`加入 ${parsed.length} 種${unit}`)
     }
 
     async function save() {
-        const items = draft.items.map((it) => ({...it, name: it.name.trim()})).filter((it) => it.name)
-        if (!draft.shop.trim()) return toast.show('填一下店家名稱', 'error')
-        if (items.length === 0) return toast.show('至少要有一種便當', 'error')
-        const over = items.filter((it) => it.price > MAX_PRICE)
+        const tidy = (list: MenuItem[]) => list.map((it) => ({...it, name: it.name.trim()})).filter((it) => it.name)
+        const items = tidy(draft.items)
+        if (drink && !draft.host.trim()) return toast.show('填一下你的名字，大家才知道誰開的團', 'error')
+        if (!draft.shop.trim()) return toast.show(drink ? '先拉一下拉霸，抽今天喝哪家' : '填一下店家名稱', 'error')
+        if (items.length === 0) return toast.show(`至少要有一種${unit}`, 'error')
+        const over = drink ? [] : items.filter((it) => it.price > MAX_PRICE)
         if (over.length) return toast.show(`便當不能超過 $${MAX_PRICE}：${over.map((it) => it.name).join('、')}`, 'error')
         setSaving(true)
         try {
-            const saved = await api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), items})
+            const saved = await api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), items, addons: tidy(draft.addons)})
+            // 舊版 Code.gs 不認得飲料團，會存成便當蓋掉這週菜單
+            if (drink && saved.kind !== 'drink') throw new Error('後端 Code.gs 是舊版，請先貼上新版並部署，再開飲料團')
             setDraft(saved)
-            toast.show(isNew ? '菜單已發佈，大家可以點了' : '菜單已儲存')
+            toast.show(isNew ? (drink ? `${draft.mode === 'group' ? '揪團' : '抖內'}開好了，大家的畫面會跳出來` : '菜單已發佈，大家可以點了') : '菜單已儲存', 'ok', drink ? 'boba' : 'bowl')
             setIsNew(false)
             await onSaved()
         } catch (e) {
@@ -256,19 +225,42 @@ function MenuEditor({
 
     return (
         <div>
-            <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                {drink && isNew ? (
+                    // 誰開的團＋抖內（請大家喝）還是揪團（各付各的）
+                    <div className="flex flex-wrap items-end gap-3">
+                        <label className="field w-48">
+                            <span className="field-label">你的名字</span>
+                            <input value={draft.host} onChange={(e) => set('host', e.target.value)} maxLength={20}/>
+                        </label>
+                        <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm" role="radiogroup" aria-label="抖內還是揪團">
+                            {([['treat', '抖內', '我請大家喝'], ['group', '揪團', '各付各的']] as const).map(([m, label, hint], i) => (
+                                <button key={m} type="button" role="radio" aria-checked={draft.mode === m} onClick={() => set('mode', m)}
+                                        className={`${TAB} ${i ? 'border-l-3 border-soy' : ''} aria-checked:bg-soy aria-checked:text-yolk`}>
+                                    {label}<span className="ml-1.5 text-sm opacity-75">{hint}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
                 <p className="text-[1.1rem]">
-                    {isNew ? '新的一週' : `正在編輯 ${formatDay(draft.deadline)}截止的菜單`}
+                    {isNew
+                        ? '新的一週'
+                        : drink
+                            ? `${draft.host} 的${draft.mode === 'group' ? '揪團' : '抖內'}・${formatDeadline(draft.deadline)}截止`
+                            : `正在編輯 ${formatDay(draft.deadline)}截止的菜單`}
                     {!isNew && isClosed(draft.deadline) && <span className="pill text-stamp-dark">已截止</span>}
                 </p>
+                )}
                 {!isNew && (
                     <button className="btn btn-ghost" onClick={startNewWeek}>
-                        開新的一週
+                        {drink ? '開新的飲料團' : '開新的一週'}
                     </button>
                 )}
             </div>
 
             <div className="grid grid-cols-2 gap-6 max-md:grid-cols-1">
+                {!drink && (
                 <section className="card flex flex-col gap-3.5">
                     <h2 className="mb-0">菜單照片</h2>
                     <div
@@ -293,15 +285,21 @@ function MenuEditor({
                                onChange={(e) => pickFile(e.target.files?.[0])}/>
                     </div>
                 </section>
+                )}
 
-                <section className="card flex flex-col gap-3.5">
-                    <h2 className="mb-0">基本資料</h2>
+                <section className={`card flex flex-col gap-3.5 ${drink ? 'col-span-full' : ''}`}>
+                    <h2 className="mb-0">{drink ? '今天喝哪家？' : '基本資料'}</h2>
+                    {drink ? (
+                        // 飲料店只能拉霸抽，開團後就不能換
+                        <SlotMachine shops={DRINK_SHOPS} value={draft.shop} onPick={pickShop} locked={!isNew}/>
+                    ) : (
+                    <>
                     <label className="field">
                         <span className="field-label">常用店家</span>
-                        <select value={SHOPS.some((s) => s.shop === draft.shop) ? draft.shop : ''}
+                        <select value={(drink ? DRINK_SHOPS : SHOPS).some((s) => s.shop === draft.shop) ? draft.shop : ''}
                                 onChange={(e) => pickShop(e.target.value)}>
                             <option value="">其他店家（自己填）</option>
-                            {SHOPS.map((s) => (
+                            {(drink ? DRINK_SHOPS : SHOPS).map((s) => (
                                 <option key={s.shop}>{s.shop}</option>
                             ))}
                         </select>
@@ -311,6 +309,8 @@ function MenuEditor({
                         <input value={draft.shop} onChange={(e) => set('shop', e.target.value)}
                                placeholder="例如：阿嬤灶腳便當"/>
                     </label>
+                    </>
+                    )}
                     <label className="field">
                         <span className="field-label">截止時間</span>
                         <input
@@ -318,21 +318,32 @@ function MenuEditor({
                             value={toLocalInput(draft.deadline)}
                             onChange={(e) => e.target.value && set('deadline', fromLocalInput(e.target.value))}
                         />
-                        <span className="text-sm text-soy-soft">
-              預設是週五 13:00。
-              <button type="button" className="link-btn" onClick={() => set('deadline', defaultDeadline())}>
-                改回這週五 13:00
-              </button>
-            </span>
+                        {drink ? (
+                            <span className="text-sm text-soy-soft">
+                                限時 bonus，預設開團後 1 小時。
+                                <button type="button" className="link-btn" onClick={() => set('deadline', drinkDeadline())}>
+                                    改成 1 小時後
+                                </button>
+                            </span>
+                        ) : (
+                            <span className="text-sm text-soy-soft">
+                                預設是週五 13:00。
+                                <button type="button" className="link-btn" onClick={() => set('deadline', defaultDeadline())}>
+                                    改回這週五 13:00
+                                </button>
+                            </span>
+                        )}
                     </label>
                 </section>
 
                 <section className="card col-span-full flex flex-col gap-3.5">
                     <div className="flex items-baseline justify-between">
-                        <h2 className="mb-0">便當種類</h2>
-                        <button className="link-btn" onClick={() => setBulkOpen((o) => !o)}>
-                            {bulkOpen ? '收起' : '從文字貼上'}
-                        </button>
+                        <h2 className="mb-0">{unit}種類{drink && <span className="ml-2 text-sm font-normal text-soy-soft">一律 L，填 L 的價錢</span>}</h2>
+                        {!drink && (
+                            <button className="link-btn" onClick={() => setBulkOpen((o) => !o)}>
+                                {bulkOpen ? '收起' : '從文字貼上'}
+                            </button>
+                        )}
                     </div>
                     {bulkOpen && (
                         <div className="flex flex-col items-start gap-2.5">
@@ -340,7 +351,7 @@ function MenuEditor({
                   rows={5}
                   value={bulk}
                   onChange={(e) => setBulk(e.target.value)}
-                  placeholder={'一行一種，後面可以帶價錢\n排骨便當 100\n雞腿便當 $110'}
+                  placeholder={drink ? '一行一種，後面可以帶價錢\n茶花紅烏龍 75' : '一行一種，後面可以帶價錢\n排骨便當 100\n雞腿便當 $110'}
               />
                             <button className="btn" onClick={applyBulk}>
                                 加入清單
@@ -348,47 +359,69 @@ function MenuEditor({
                         </div>
                     )}
                     {draft.items.length === 0 && !bulkOpen &&
-                        <p className="text-soy-soft">還沒有便當，按下面的按鈕新增。</p>}
-                    <ul className="grid grid-cols-2 gap-x-6 gap-y-2.5 max-md:grid-cols-1">
-                        {draft.items.map((it, i) => (
-                            <li key={it.id} className="flex items-center gap-2">
-                                <input aria-label={`第 ${i + 1} 種便當名稱`} value={it.name}
-                                       onChange={(e) => setItem(it.id, {name: e.target.value})} placeholder="便當名稱"/>
-                                <input
-                                    className="w-24 flex-none aria-invalid:border-stamp aria-invalid:text-stamp"
-                                    type="number"
-                                    inputMode="numeric"
-                                    min={0}
-                                    max={MAX_PRICE}
-                                    aria-invalid={it.price > MAX_PRICE}
-                                    aria-label={`第 ${i + 1} 種便當單價`}
-                                    value={it.price || ''}
-                                    onChange={(e) => setItem(it.id, {price: Math.max(0, Math.round(Number(e.target.value) || 0))})}
-                                    placeholder="$ 單價"
-                                />
-                                <button
-                                    className="size-9 flex-none cursor-pointer rounded-full border-2 border-soy bg-rice text-[1.3rem] leading-none text-soy hover:bg-stamp hover:text-rice"
-                                    aria-label={`刪除 ${it.name}`}
-                                    onClick={() => set('items', draft.items.filter((x) => x.id !== it.id))}
-                                >
-                                    ×
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                    <button className="btn btn-ghost w-full"
-                            onClick={() => set('items', [...draft.items, {id: uid('i_'), name: '', price: 0}])}>
-                        + 加一種便當
-                    </button>
+                        <p className="text-soy-soft">{drink ? '拉霸抽到店家後，飲料會自動帶進來。' : `還沒有${unit}，按下面的按鈕新增。`}</p>}
+                    <ItemRows list={draft.items} onChange={(v) => set('items', v)} unit={unit} max={drink ? undefined : MAX_PRICE}/>
                 </section>
+
+                {drink && (
+                    <section className="card col-span-full flex flex-col gap-3.5">
+                        <h2 className="mb-0">加料<span className="ml-2 text-sm font-normal text-soy-soft">每杯選一種</span></h2>
+                        {draft.addons.length === 0 && <p className="text-soy-soft">沒有加料就留空。</p>}
+                        <ItemRows list={draft.addons} onChange={(v) => set('addons', v)} unit="加料"/>
+                    </section>
+                )}
             </div>
 
             <div className="mt-6 flex justify-end">
                 <button className="btn btn-primary btn-big" onClick={save} disabled={saving || uploading}>
-                    {saving ? '儲存中…' : isNew ? '發佈菜單' : '儲存菜單'}
+                    {saving ? '儲存中…' : isNew ? (drink ? '開團！' : '發佈菜單') : '儲存菜單'}
                 </button>
             </div>
         </div>
+    )
+}
+
+/** 品項清單：名稱＋單價＋刪除，最後一顆新增；便當有上限，超過的單價變紅 */
+function ItemRows({list, onChange, unit, max}: {
+    list: MenuItem[]
+    onChange: (list: MenuItem[]) => void
+    unit: string
+    max?: number
+}) {
+    const patch = (id: string, p: Partial<MenuItem>) => onChange(list.map((it) => (it.id === id ? {...it, ...p} : it)))
+    return (
+        <>
+            <ul className="grid grid-cols-2 gap-x-6 gap-y-2.5 max-md:grid-cols-1">
+                {list.map((it, i) => (
+                    <li key={it.id} className="flex items-center gap-2">
+                        <input aria-label={`第 ${i + 1} 種${unit}名稱`} value={it.name}
+                               onChange={(e) => patch(it.id, {name: e.target.value})} placeholder={`${unit}名稱`}/>
+                        <input
+                            className="w-24 flex-none aria-invalid:border-stamp aria-invalid:text-stamp"
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={max}
+                            aria-invalid={max != null && it.price > max}
+                            aria-label={`第 ${i + 1} 種${unit}單價`}
+                            value={it.price || ''}
+                            onChange={(e) => patch(it.id, {price: Math.max(0, Math.round(Number(e.target.value) || 0))})}
+                            placeholder="$ 單價"
+                        />
+                        <button
+                            className="size-9 flex-none cursor-pointer rounded-full border-2 border-soy bg-rice text-[1.3rem] leading-none text-soy hover:bg-stamp hover:text-rice"
+                            aria-label={`刪除 ${it.name}`}
+                            onClick={() => onChange(list.filter((x) => x.id !== it.id))}
+                        >
+                            ×
+                        </button>
+                    </li>
+                ))}
+            </ul>
+            <button className="btn btn-ghost w-full" onClick={() => onChange([...list, {id: uid('i_'), name: '', price: 0}])}>
+                + 加一種{unit}
+            </button>
+        </>
     )
 }
 
@@ -433,7 +466,6 @@ function StatsPanel({
 
     const stats = useMemo(() => computeStats(snap?.week ?? null, snap?.orders ?? []), [snap])
     const maxCount = Math.max(1, ...stats.items.map((s) => s.count))
-    const priceOf = (itemId: string) => stats.items.find((s) => s.itemId === itemId)?.price ?? 0
 
     if (weeks.length === 0) {
         return (
@@ -464,7 +496,7 @@ function StatsPanel({
     async function copyForShop() {
         if (!week) return
         try {
-            await navigator.clipboard.writeText(shopText(week, stats))
+            await navigator.clipboard.writeText(shopText(week, stats, snap!.orders))
             toast.show('已複製，可以直接貼給店家')
         } catch {
             toast.show('瀏覽器不讓複製，請手動選取', 'error')
@@ -491,7 +523,7 @@ function StatsPanel({
                             onChange={(e) => setWeekId(e.target.value)}>
                         {weeks.map((w) => (
                             <option key={w.id} value={w.id}>
-                                {w.shop || '未命名'}（{formatDay(w.deadline)}截止）
+                                {w.kind === 'drink' ? (w.mode === 'group' ? '【揪團】' : '【抖內】') : ''}{w.shop || '未命名'}（{formatDay(w.deadline)}截止）
                             </option>
                         ))}
                     </select>
@@ -506,7 +538,7 @@ function StatsPanel({
                         重新整理
                     </button>
                     <button className="btn" onClick={copyForShop} disabled={!stats.total}>
-                        複製給店家
+                        {week?.kind === 'drink' ? '複製訂單' : '複製給店家'}
                     </button>
                     <button className="btn btn-primary" onClick={doExport} disabled={!week || exporting}>
                         {exporting ? '匯出中…' : '匯出 Excel'}
@@ -534,6 +566,46 @@ function StatsPanel({
                         </div>
                     </div>
 
+                    {week?.kind === 'drink' ? (
+                        <section className="card">
+                            <h2>訂購統計表</h2>
+                            {snap.orders.length === 0 ? (
+                                <p className="text-soy-soft">還沒有人點。</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-md">
+                                        <thead>
+                                        <tr>
+                                            <th>飲料（L）</th>
+                                            <th className="text-right">杯數</th>
+                                            <th className="text-right">單價</th>
+                                            <th className="text-right">小計</th>
+                                            <th>誰點的</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {drinkSummary(week, snap.orders).map((r) => (
+                                            <tr key={r.label} className="hover:bg-yolk-soft">
+                                                <td>{r.label}</td>
+                                                <td className="text-right font-num tabular-nums">{r.count}</td>
+                                                <td className="text-right font-num tabular-nums">${r.price}</td>
+                                                <td className="text-right font-num tabular-nums">${r.subtotal}</td>
+                                                <td className="whitespace-normal text-soy-soft">{r.people.join('、')}</td>
+                                            </tr>
+                                        ))}
+                                        <tr className="font-bold">
+                                            <td>合計</td>
+                                            <td className="text-right font-num tabular-nums">{stats.total}</td>
+                                            <td/>
+                                            <td className="text-right font-num tabular-nums">${stats.amount}</td>
+                                            <td/>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </section>
+                    ) : (
                     <section className="card">
                         <h2>各便當數量</h2>
                         <ul className="flex flex-col gap-3.5">
@@ -560,6 +632,7 @@ function StatsPanel({
                             ))}
                         </ul>
                     </section>
+                    )}
 
                     <section className="card">
                         <h2>訂單明細</h2>
@@ -571,7 +644,7 @@ function StatsPanel({
                                     <thead>
                                     <tr>
                                         <th>姓名</th>
-                                        <th>便當</th>
+                                        <th>餐點</th>
                                         <th className="text-right">金額</th>
                                         <th>時間</th>
                                         <th>
@@ -583,8 +656,8 @@ function StatsPanel({
                                     {snap.orders.map((o) => (
                                         <tr key={o.id} className="hover:bg-yolk-soft">
                                             <td>{o.name}</td>
-                                            <td>{o.itemName}</td>
-                                            <td className="text-right font-num tabular-nums">{priceOf(o.itemId) ? `$${priceOf(o.itemId)}` : '—'}</td>
+                                            <td>{orderLabel(o)}</td>
+                                            <td className="text-right font-num tabular-nums">{orderPrice(snap.week, o) ? `$${orderPrice(snap.week, o)}` : '—'}</td>
                                             <td className="text-soy-soft">{formatTime(o.updatedAt)}</td>
                                             <td>
                                                 <button className="link-btn text-stamp-dark"

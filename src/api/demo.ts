@@ -1,14 +1,14 @@
 import type { Api, Order, Snapshot, Week } from '../types'
 import { defaultDeadline, isClosed } from '../lib/time'
 import { normName } from '../lib/stats'
+import { currentRounds, drinkOptions } from '../lib/drink'
 import { uid } from '../lib/image'
 
 /**
  * Demo 模式：沒有設定 VITE_GAS_URL 時使用，資料只存在這台電腦的瀏覽器。
- * 負責人密碼跟正式版一樣：fm1234
+ * 訂單管理不用密碼。
  */
-const KEY = 'dinbendon:demo:v4'
-const PASSWORD = 'fm1234'
+const KEY = 'dinbendon:demo:v5'
 
 interface Db {
   weeks: Week[]
@@ -37,14 +37,6 @@ function save(db: Db) {
   }
 }
 
-function auth(pw: string) {
-  if (pw !== PASSWORD) throw new Error('密碼不對')
-}
-
-function latest(db: Db): Week | null {
-  return [...db.weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
-}
-
 function snapshot(db: Db, week: Week | null): Snapshot {
   return { week, orders: week ? db.orders.filter((o) => o.weekId === week.id) : [] }
 }
@@ -55,7 +47,8 @@ export function createDemoApi(): Api {
     async getCurrent() {
       await wait()
       const db = load()
-      return snapshot(db, latest(db))
+      const { bento, drink } = currentRounds(db.weeks)
+      return { ...snapshot(db, bento), drink: drink ? snapshot(db, drink) : null }
     },
     async placeOrder(input) {
       await wait(400)
@@ -67,6 +60,7 @@ export function createDemoApi(): Api {
       if (!item) throw new Error('這個便當已經被負責人拿掉了，重新整理再選一次')
       const name = input.name.trim()
       if (!name) throw new Error('要填名字，負責人才知道便當是誰的')
+      const extra = week.kind === 'drink' ? drinkOptions(week, input) : { options: '', addonIds: [] }
       const now = new Date().toISOString()
       const existing = db.orders.find((o) => o.weekId === week.id && normName(o.name) === normName(name))
       const order: Order = {
@@ -75,6 +69,7 @@ export function createDemoApi(): Api {
         name,
         itemId: item.id,
         itemName: item.name,
+        ...extra,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       }
@@ -91,24 +86,20 @@ export function createDemoApi(): Api {
       save(db)
     },
     admin: {
-      async verify(pw) {
+      async verify(_pw) {
         await wait()
-        auth(pw)
       },
-      async listWeeks(pw) {
+      async listWeeks(_pw) {
         await wait()
-        auth(pw)
         return [...load().weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       },
-      async getWeek(pw, weekId) {
+      async getWeek(_pw, weekId) {
         await wait()
-        auth(pw)
         const db = load()
         return snapshot(db, db.weeks.find((w) => w.id === weekId) ?? null)
       },
-      async saveWeek(pw, draft) {
+      async saveWeek(_pw, draft) {
         await wait(400)
-        auth(pw)
         const db = load()
         const now = new Date().toISOString()
         const prev = db.weeks.find((w) => w.id === draft.id)
@@ -117,14 +108,12 @@ export function createDemoApi(): Api {
         save(db)
         return week
       },
-      async uploadImage(pw, dataUrl) {
+      async uploadImage(_pw, dataUrl) {
         await wait(600)
-        auth(pw)
         return dataUrl // Demo 直接存 data URL
       },
-      async deleteOrder(pw, orderId) {
+      async deleteOrder(_pw, orderId) {
         await wait()
-        auth(pw)
         const db = load()
         db.orders = db.orders.filter((o) => o.id !== orderId)
         save(db)
@@ -147,6 +136,10 @@ function seed(): Db {
   ]
   const week: Week = {
     id: 'w_demo',
+    kind: 'bento',
+    addons: [],
+    host: '',
+    mode: 'treat',
     shop: '阿嬤灶腳便當',
     imageUrl: menuSvg(items),
     deadline: defaultDeadline(),
@@ -164,7 +157,7 @@ function seed(): Db {
   const orders: Order[] = people.map(([name, itemId], i) => {
     const it = items.find((x) => x.id === itemId)!
     const t = new Date(Date.now() - (people.length - i) * 37 * 60_000).toISOString()
-    return { id: `o_demo${i}`, weekId: week.id, name, itemId, itemName: it.name, createdAt: t, updatedAt: t }
+    return { id: `o_demo${i}`, weekId: week.id, name, itemId, itemName: it.name, options: '', addonIds: [], createdAt: t, updatedAt: t }
   })
   return { weeks: [week], orders }
 }

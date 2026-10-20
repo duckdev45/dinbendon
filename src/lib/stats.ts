@@ -11,7 +11,7 @@ export interface ItemStat {
 
 export interface Stats {
   items: ItemStat[]
-  /** 一人一個，所以訂餐人數 = 便當數 */
+  /** 一人一份，所以訂餐人數 = 便當（飲料）數 */
   total: number
   /** 總金額，請款用 */
   amount: number
@@ -19,7 +19,47 @@ export interface Stats {
   tops: ItemStat[]
 }
 
-/** 依菜單順序統計；菜單上已刪掉但有人點過的品項會排在最後，不知道價錢算 0 */
+/** 一筆訂單的金額：品項單價＋加料；菜單上已刪掉的品項不知道價錢算 0 */
+export function orderPrice(week: Week | null, o: Order): number {
+  const item = week?.items.find((it) => it.id === o.itemId)?.price ?? 0
+  const addons = (week?.addons ?? []).filter((a) => o.addonIds?.includes(a.id)).reduce((sum, a) => sum + a.price, 0)
+  return item + addons
+}
+
+/** 「茶花紅烏龍 微糖 少冰 +燕麥粒」；便當就只有名稱 */
+export function orderLabel(o: Order): string {
+  return o.options ? `${o.itemName} ${o.options}` : o.itemName
+}
+
+/** 「鴨子 奶茶 無糖 少冰 +珍珠」：發飲料、核對用 */
+export function personLine(o: Order): string {
+  return `${o.name} ${orderLabel(o)}`
+}
+
+export interface SummaryRow {
+  label: string
+  count: number
+  /** 一杯的錢，含加料 */
+  price: number
+  subtotal: number
+  people: string[]
+}
+
+/** 飲料訂購統計表：同飲料同甜度冰量加料併成一列，照第一次出現的順序 */
+export function drinkSummary(week: Week, orders: Order[]): SummaryRow[] {
+  const rows = new Map<string, SummaryRow>()
+  for (const o of orders) {
+    const label = orderLabel(o)
+    const row = rows.get(label) ?? { label, count: 0, price: orderPrice(week, o), subtotal: 0, people: [] }
+    row.count += 1
+    row.subtotal += row.price
+    row.people.push(o.name)
+    rows.set(label, row)
+  }
+  return [...rows.values()]
+}
+
+/** 依菜單順序統計；菜單上已刪掉但有人點過的品項會排在最後。小計含加料 */
 export function computeStats(week: Week | null, orders: Order[]): Stats {
   const map = new Map<string, ItemStat>()
   week?.items.forEach((it) => map.set(it.id, { itemId: it.id, name: it.name, price: it.price, count: 0, subtotal: 0, people: [] }))
@@ -30,7 +70,7 @@ export function computeStats(week: Week | null, orders: Order[]): Stats {
       map.set(o.itemId, s)
     }
     s.count += 1
-    s.subtotal += s.price
+    s.subtotal += orderPrice(week, o)
     s.people.push(o.name)
   }
   const items = [...map.values()]
@@ -44,8 +84,15 @@ export function normName(name: string) {
   return name.trim().toLowerCase()
 }
 
-/** 打電話給店家用的文字 */
-export function shopText(week: Week, stats: Stats): string {
+/** 複製用的文字：便當照品項數量；飲料一人一行「鴨子 奶茶 無糖 少冰 +珍珠」，揪團後面帶要付的錢 */
+export function shopText(week: Week, stats: Stats, orders: Order[]): string {
+  const total = (unit: string) => `共 ${stats.total} ${unit}${stats.amount ? `，$${stats.amount}` : ''}`
+  if (week.kind === 'drink') {
+    const group = week.mode === 'group'
+    const host = week.host ? `・${week.host}${group ? '揪團' : '請客'}` : ''
+    const lines = orders.map((o) => (group ? `${personLine(o)} $${orderPrice(week, o)}` : personLine(o)))
+    return [`${week.shop || '飲料'} 飲料（全部 L）${host}`, ...lines, total('杯')].join('\n')
+  }
   const lines = stats.items.filter((s) => s.count > 0).map((s) => `${s.name} × ${s.count}`)
-  return [`${week.shop || '便當'} 訂單`, ...lines, `共 ${stats.total} 個${stats.amount ? `，$${stats.amount}` : ''}`].join('\n')
+  return [`${week.shop || '便當'} 訂單`, ...lines, total('個')].join('\n')
 }

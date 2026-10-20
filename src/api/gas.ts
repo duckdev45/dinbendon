@@ -1,4 +1,4 @@
-import type { Api, Order, Snapshot, Week } from '../types'
+import type { Api, Current, Order, Snapshot, Week } from '../types'
 
 /**
  * Google Apps Script Web App。
@@ -24,7 +24,7 @@ export function createGasApi(url: string): Api {
 
   return {
     mode: 'gas',
-    getCurrent: () => call<Snapshot>('getCurrent'),
+    getCurrent: () => call<Current>('getCurrent'),
     placeOrder: (input) => call<Order>('placeOrder', { ...input }),
     cancelOrder: (weekId, name) => call<void>('cancelOrder', { weekId, name }),
     admin: {
