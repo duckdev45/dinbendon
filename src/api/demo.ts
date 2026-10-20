@@ -91,7 +91,9 @@ export function createDemoApi(): Api {
       },
       async listWeeks(_pw) {
         await wait()
-        return [...load().weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        const db = load()
+        const weeks = [...db.weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        return { weeks, latest: snapshot(db, weeks[0] ?? null) }
       },
       async getWeek(_pw, weekId) {
         await wait()

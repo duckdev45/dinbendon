@@ -73,7 +73,8 @@ export interface Api {
   cancelOrder(weekId: string, name: string): Promise<void>
   admin: {
     verify(password: string): Promise<void>
-    listWeeks(password: string): Promise<Week[]>
+    /** 順便帶最新一團的訂單，省一次往返 */
+    listWeeks(password: string): Promise<{ weeks: Week[]; latest: Snapshot }>
     getWeek(password: string, weekId: string): Promise<Snapshot>
     saveWeek(password: string, week: WeekDraft): Promise<Week>
     uploadImage(password: string, dataUrl: string, filename: string): Promise<string>

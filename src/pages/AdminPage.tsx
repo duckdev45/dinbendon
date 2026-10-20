@@ -35,11 +35,13 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
         return t === 'menu' || t === 'drink' ? t : 'stats'
     })
     const [weeks, setWeeks] = useState<Week[] | null>(null)
+    const [latest, setLatest] = useState<Snapshot | null>(null)
 
     const loadWeeks = useCallback(async () => {
         try {
-            const list = await api.admin.listWeeks(pw)
+            const {weeks: list, latest} = await api.admin.listWeeks(pw)
             setWeeks(list)
+            setLatest(latest)
             if (list.length === 0) setTab((t) => (t === 'stats' ? 'menu' : t))
         } catch (e) {
             toast.show((e as Error).message, 'error')
@@ -85,7 +87,7 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                     }}
                 />
             ) : (
-                <StatsPanel pw={pw} weeks={weeks} toast={toast} onEmpty={() => setTab('menu')}/>
+                <StatsPanel pw={pw} weeks={weeks} initial={latest} toast={toast} onEmpty={() => setTab('menu')}/>
             )}
         </main>
     )
@@ -467,16 +469,19 @@ function topText(tops: { name: string; count: number }[]) {
 function StatsPanel({
                         pw,
                         weeks,
+                        initial,
                         toast,
                         onEmpty,
                     }: {
     pw: string
     weeks: Week[]
+    /** listWeeks 順帶回來的最新一團，先顯示，背景再刷新 */
+    initial: Snapshot | null
     toast: ReturnType<typeof useToast>
     onEmpty: () => void
 }) {
     const [weekId, setWeekId] = useState(weeks[0]?.id ?? '')
-    const [snap, setSnap] = useState<Snapshot | null>(null)
+    const [snap, setSnap] = useState<Snapshot | null>(initial)
     const [exporting, setExporting] = useState(false)
 
     const load = useCallback(async () => {
@@ -547,7 +552,7 @@ function StatsPanel({
             <div className="flex flex-wrap items-center gap-3">
                 <label className="max-w-full max-md:w-full">
                     <span className="sr-only">選擇哪一週</span>
-                    <select className="w-auto max-w-full rounded-full px-4 py-2 max-md:w-full" value={weekId}
+                    <select className="w-auto max-w-full rounded-full py-2 pl-4 font-bold shadow-pop-sm focus:shadow-pop-sm focus:border-yolk-deep max-md:w-full" value={weekId}
                             onChange={(e) => setWeekId(e.target.value)}>
                         {weeks.map((w) => (
                             <option key={w.id} value={w.id}>
@@ -557,7 +562,7 @@ function StatsPanel({
                     </select>
                 </label>
                 {week && (
-                    <span className={`pill ${isClosed(week.deadline) ? 'text-stamp-dark' : 'text-scallion'}`}>
+                    <span className={`pill ml-0 border-3 px-3.5 py-1 font-bold ${isClosed(week.deadline) ? 'text-stamp-dark' : 'bg-scallion-soft text-scallion'}`}>
             {isClosed(week.deadline) ? '已截止' : `收單中，${formatDeadline(week.deadline)} 截止`}
           </span>
                 )}

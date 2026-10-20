@@ -105,8 +105,10 @@ var ACTIONS = {
     return null;
   },
 
+  // 順便帶最新一團的訂單，後台進來只要打一次（Apps Script 每次呼叫都要 1–3 秒）
   adminListWeeks: function (p) {
-    return allWeeks_();
+    var weeks = allWeeks_();
+    return { weeks: weeks, latest: snapshot_(weeks[0] || null) };
   },
 
   adminGetWeek: function (p) {
@@ -192,7 +194,8 @@ function allWeeks_() {
 }
 
 function findWeek_(id) {
-  return allWeeks_().filter(function (w) { return w.id === id; })[0] || null;
+  var row = readRows_(sheet_('weeks'), WEEK_COLS).filter(function (r) { return r.id === id; })[0];
+  return row ? castWeek_(row) : null;
 }
 
 function snapshot_(week) {

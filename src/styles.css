@@ -126,6 +126,53 @@
     resize: vertical;
   }
 
+  /* iOS Safari 的日期欄有原生最小寬度，不拿掉 appearance 會撐破卡片；值也會置中 */
+  input[type='datetime-local'] {
+    appearance: none;
+    min-height: 3.1rem;
+  }
+
+  ::-webkit-date-and-time-value {
+    text-align: left;
+  }
+
+  /* 下拉選單：自己畫箭頭；支援 base-select 的瀏覽器（Chrome 135+）連展開的清單一起套主題，其他維持原生清單 */
+  select {
+    @apply cursor-pointer appearance-none bg-[length:0.8rem] bg-[right_1rem_center] bg-no-repeat pr-10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.5l4.5 4.5 4.5-4.5' fill='none' stroke='%233b2314' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+
+  @supports (appearance: base-select) {
+    select,
+    ::picker(select) {
+      appearance: base-select;
+    }
+
+    select::picker-icon {
+      display: none;
+    }
+
+    ::picker(select) {
+      @apply mt-2 rounded-tile border-3 border-soy bg-rice p-1.5 shadow-pop-sm;
+    }
+
+    option {
+      @apply cursor-pointer rounded-[10px] px-3 py-2;
+    }
+
+    option:is(:hover, :focus-visible) {
+      @apply bg-yolk-soft outline-none;
+    }
+
+    option:checked {
+      @apply bg-yolk font-bold;
+    }
+
+    option::checkmark {
+      display: none;
+    }
+  }
+
   :is(input, select, textarea):disabled {
     @apply cursor-not-allowed bg-yolk-soft text-soy-soft;
   }
