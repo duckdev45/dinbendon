@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { ShopLogo } from './ShopLogo'
 
-const TILE = 96 // 一格的高度（px），跟 reel 視窗一樣高
+// 一格的高度跟 reel 視窗一樣高：用 CSS 變數 --tile，桌機 96px、手機 66px（見最外層 class）
 const LAPS = 6 // 轉幾圈才停
 const REELS = [1.4, 1.9, 2.4] // 三輪各轉幾秒，一輪一輪停
 
@@ -54,23 +54,23 @@ export function SlotMachine({
   const picked = value ? shops[current] : null
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <div className="flex items-center gap-3">
-        <div className="rounded-card border-3 border-soy bg-stamp p-3 shadow-pop">
-          <p className="mb-2 text-center font-num text-[1.3rem] font-bold tracking-widest text-yolk">★ BONUS 拉霸 ★</p>
-          <div className="flex gap-2 rounded-xl border-3 border-soy bg-soy p-2">
+    <div className="flex flex-col items-center gap-3 [--tile:96px] max-md:[--tile:66px]">
+      <div className="flex items-center gap-3 max-md:gap-2">
+        <div className="rounded-card border-3 border-soy bg-stamp p-3 shadow-pop max-md:p-2">
+          <p className="mb-2 text-center font-num text-[1.3rem] font-bold tracking-widest whitespace-nowrap text-yolk max-md:text-base max-md:tracking-normal">★ BONUS 拉霸 ★</p>
+          <div className="flex gap-2 rounded-xl border-3 border-soy bg-soy p-2 max-md:gap-1.5 max-md:p-1.5">
             {REELS.map((sec, i) => (
-              <div key={i} className="relative w-[104px] overflow-hidden rounded-lg bg-rice" style={{ height: TILE }}>
+              <div key={i} className="relative h-(--tile) w-[104px] overflow-hidden rounded-lg bg-rice max-md:w-[66px]">
                 <div
                   style={{
-                    transform: `translateY(${-pos * TILE}px)`,
+                    transform: `translateY(calc(var(--tile) * ${-pos}))`,
                     transition: animate ? `transform ${reduce ? 0.01 : sec}s cubic-bezier(0.15, 0.8, 0.25, 1)` : 'none',
                   }}
                   onTransitionEnd={i === REELS.length - 1 ? done : undefined}
                 >
                   {strip.map((s, k) => (
-                    <div key={k} className="grid place-items-center" style={{ height: TILE }}>
-                      <ShopLogo logo={s.logo} shop={s.shop} size={76} />
+                    <div key={k} className="grid h-(--tile) place-items-center">
+                      <ShopLogo logo={s.logo} shop={s.shop} size={76} className="max-md:size-[54px]!" />
                     </div>
                   ))}
                 </div>
@@ -90,14 +90,14 @@ export function SlotMachine({
           aria-label="拉霸！"
         >
           <span key={pulls} className={`flex origin-bottom flex-col items-center ${pulls ? 'animate-lever' : ''}`}>
-            <span className="size-10 rounded-full border-3 border-soy bg-stamp shadow-pop-sm group-hover:bg-yolk" />
-            <span className="h-20 w-3 rounded-b-full border-x-3 border-b-3 border-soy bg-rice" />
+            <span className="size-10 rounded-full border-3 border-soy bg-stamp shadow-pop-sm group-hover:bg-yolk max-md:size-8" />
+            <span className="h-20 w-3 rounded-b-full border-x-3 border-b-3 border-soy bg-rice max-md:h-14" />
           </span>
           <span className="mt-1 text-sm">{locked ? '已開團' : spinning ? '轉轉轉…' : '拉！'}</span>
         </button>
       </div>
 
-      <p className="min-h-[1.6em] text-[1.15rem]" aria-live="polite">
+      <p className="min-h-[1.6em] text-center text-[1.15rem]" aria-live="polite">
         {spinning ? '轉呀轉…' : picked ? <>🎉 JACKPOT！今天喝 <b>{picked.shop}</b></> : '拉一下拉桿，抽今天喝哪家'}
       </p>
     </div>

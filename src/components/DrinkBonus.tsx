@@ -132,13 +132,13 @@ export function DrinkBonus({
     if (view === 'closed') {
         return (
             <button
-                className="fixed right-5 bottom-5 z-40 flex animate-pop cursor-pointer items-center gap-3 rounded-card border-3 border-soy bg-yolk py-2.5 pr-6 pl-3 text-left shadow-pop transition-[translate] hover:-translate-y-1"
+                className="fixed right-5 bottom-5 z-40 flex animate-pop cursor-pointer items-center gap-3 rounded-card border-3 border-soy bg-yolk py-2.5 pr-6 pl-3 text-left shadow-pop transition-[translate] hover:-translate-y-1 max-md:right-3 max-md:bottom-3 max-md:gap-2 max-md:py-1.5 max-md:pr-4 max-md:pl-2"
                 onClick={() => setView(mine ? 'form' : 'ad')}
             >
-                <BobaCup size={72} decorative/>
+                <BobaCup size={72} decorative className="max-md:h-auto max-md:w-[44px]"/>
                 <span className="leading-tight">
           <span className="block text-[1.05rem] text-stamp">{badge}{mine ? '・已點' : '！'}</span>
-          <span className="font-num text-[2rem] leading-none font-bold tabular-nums">{clock(left)}</span>
+          <span className="font-num text-[2rem] leading-none font-bold tabular-nums max-md:text-[1.4rem]">{clock(left)}</span>
         </span>
             </button>
         )
@@ -149,25 +149,25 @@ export function DrinkBonus({
              aria-label={`${badge}：${title}`}>
             {view === 'ad' ? (
                 <div
-                    className="relative w-full max-w-[540px] animate-pop rounded-card border-3 border-soy bg-yolk p-2.5 text-center shadow-pop">
+                    className="relative max-h-[calc(100dvh-32px)] w-full max-w-[540px] animate-pop overflow-y-auto rounded-card border-3 border-soy bg-yolk p-2.5 text-center shadow-pop max-md:max-w-[360px] max-md:p-2">
                     {close}
                     <div
-                        className="flex flex-col items-center gap-4 rounded-[14px] border-3 border-dashed border-soy px-7 pt-8 pb-7">
+                        className="flex flex-col items-center gap-4 rounded-[14px] border-3 border-dashed border-soy px-7 pt-8 pb-7 max-md:gap-2.5 max-md:px-4 max-md:pt-6 max-md:pb-4">
                         <div
-                            className="-rotate-6 animate-stamp-in rounded-xl border-5 border-stamp bg-rice px-4 py-0.5 font-num text-[2.8rem] font-bold tracking-wide text-stamp">
+                            className="-rotate-6 animate-stamp-in rounded-xl border-5 border-stamp bg-rice px-4 py-0.5 font-num text-[2.8rem] font-bold tracking-wide whitespace-nowrap text-stamp max-md:text-[1.8rem]">
                             {badge}!
                         </div>
-                        <BobaCup size={200}/>
-                        <h2 className="mb-0 text-[2.4rem]">{title}</h2>
+                        <BobaCup size={200} className="max-md:h-auto max-md:w-[110px]"/>
+                        <h2 className="mb-0 text-[2.4rem] max-md:text-[1.6rem]">{title}</h2>
                         <div className="flex items-center gap-2.5">
-                            <ShopLogo logo={week.imageUrl} shop={week.shop} size={64}/>
+                            <ShopLogo logo={week.imageUrl} shop={week.shop} size={64} className="max-md:size-12!"/>
                             <span className="text-left leading-snug">
                 <b className="block">{week.shop}</b>
                 <span className="text-sm text-soy-soft">一律 L{group && '・各付各的'}</span>
               </span>
                         </div>
                         <div
-                            className="rounded-full bg-soy px-8 py-1 font-num text-[3.4rem] leading-tight font-bold text-yolk tabular-nums">
+                            className="rounded-full bg-soy px-8 py-1 font-num text-[3.4rem] leading-tight font-bold text-yolk tabular-nums max-md:px-6 max-md:text-[2.4rem]">
                             {clock(left)}
                         </div>
                         <button className="btn btn-primary btn-big w-full" onClick={() => setView('form')}>
@@ -203,7 +203,7 @@ export function DrinkBonus({
                             <p className="text-sm text-stamp">
                                 {badge}・剩 <span className="font-num font-bold tabular-nums">{clock(left)}</span>
                             </p>
-                            <h2 className="mb-0">{week.shop}・一律 L{group && '・各付各的'}</h2>
+                            <h2 className="mb-0 max-md:text-base">{week.shop}・一律 L{group && '・各付各的'}</h2>
                         </div>
                     </div>
 

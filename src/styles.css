@@ -42,7 +42,6 @@
   --animate-toast-in: toast-in 0.3s cubic-bezier(0.3, 1.5, 0.5, 1);
   --animate-lever: lever 0.6s ease-in-out;
   --animate-plus-one: plus-one 2.8s ease-out infinite;
-  --animate-plus-one-once: plus-one 1.2s ease-out;
 
   @keyframes pop {
     from {
@@ -125,6 +124,10 @@
 
   textarea {
     resize: vertical;
+  }
+
+  :is(input, select, textarea):disabled {
+    @apply cursor-not-allowed bg-yolk-soft text-soy-soft;
   }
 
   th,

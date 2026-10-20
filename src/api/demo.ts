@@ -103,6 +103,7 @@ export function createDemoApi(): Api {
         const db = load()
         const now = new Date().toISOString()
         const prev = db.weeks.find((w) => w.id === draft.id)
+        if (prev && prev.shop !== draft.shop && db.orders.some((o) => o.weekId === draft.id)) throw new Error('已經有人點了，不能換店家')
         const week: Week = { ...draft, createdAt: prev?.createdAt ?? now, updatedAt: now }
         db.weeks = prev ? db.weeks.map((w) => (w.id === week.id ? week : w)) : [...db.weeks, week]
         save(db)

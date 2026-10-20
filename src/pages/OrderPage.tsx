@@ -180,7 +180,7 @@ export function OrderPage() {
                     <Bowl mood={mood} size={240} className="max-md:h-auto max-md:w-[180px]"/>
                 </div>
                 <div className="min-w-0">
-                    <p className="mb-1 text-[1.05rem]">這週的便當</p>
+                    <p className="mb-1 text-[1.05rem]">下週二吃</p>
                     <h1 className="mb-3.5 text-[clamp(2rem,5vw,3.2rem)]">{week.shop || '這週便當'}</h1>
                     <Countdown deadline={week.deadline} onClose={() => forceTick((n) => n + 1)}/>
                 </div>

@@ -18,7 +18,7 @@ export function Countdown({ deadline, onClose }: { deadline: string; onClose?: (
 
   const leftTone = closed ? 'bg-soy-soft text-rice' : left.urgent ? 'animate-glow bg-stamp text-rice' : 'bg-soy text-yolk'
   return (
-    <div className="inline-flex flex-wrap items-stretch overflow-hidden rounded-tile border-3 border-soy bg-rice shadow-pop-sm">
+    <div className="inline-flex flex-wrap items-stretch overflow-hidden rounded-tile border-3 border-soy bg-rice shadow-pop-sm max-md:flex max-md:w-full max-md:flex-col max-md:text-center">
       <span className="px-3.5 py-1.5">{formatDeadline(deadline)} 截止</span>
       <span className={`px-3.5 py-1.5 font-num font-semibold tabular-nums ${leftTone}`}>{closed ? '已截止' : `還剩 ${left.text}`}</span>
     </div>

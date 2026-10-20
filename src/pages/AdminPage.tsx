@@ -26,7 +26,7 @@ export function AdminPage() {
 
 type Tab = 'menu' | 'drink' | 'stats'
 
-const TAB = 'cursor-pointer px-5 py-2 text-soy aria-selected:bg-soy aria-selected:text-yolk'
+const TAB = 'cursor-pointer px-5 py-2 whitespace-nowrap text-soy aria-selected:bg-soy aria-selected:text-yolk max-md:flex-1 max-md:px-2'
 
 function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToast> }) {
     // 從點餐頁「開便當團 / 開飲料團」過來會帶 #/admin/menu、#/admin/drink
@@ -55,7 +55,7 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
             {toast.node}
             <div className="mt-2 mb-6 flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-[1.8rem]">訂單管理</h1>
-                <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm"
+                <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:flex max-md:w-full"
                      role="tablist">
                     <button role="tab" className={TAB} aria-selected={tab === 'stats'} onClick={() => setTab('stats')}>
                         訂單統計
@@ -74,7 +74,7 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                 <p className="text-soy-soft">載入中…</p>
             ) : tab !== 'stats' ? (
                 <MenuEditor
-                    key={tab}
+                    key={`${tab}-${currentRounds(weeks)[tab === 'drink' ? 'drink' : 'bento']?.id ?? 'new'}`}
                     kind={tab === 'drink' ? 'drink' : 'bento'}
                     pw={pw}
                     // 飲料團只接著編收單中的那團，截止了就開新的
@@ -126,6 +126,13 @@ function MenuEditor({
     // 舊後端的資料沒有 addons，補空陣列
     const [draft, setDraft] = useState<WeekDraft>(() => (current ? {...current, addons: current.addons ?? []} : blankDraft(kind)))
     const [isNew, setIsNew] = useState(!current)
+    // 便當：這週已經有人點了就不能換店家（null = 還在查）
+    const [ordered, setOrdered] = useState<number | null>(null)
+    useEffect(() => {
+        if (!current || drink) return
+        api.admin.getWeek(pw, current.id).then((s) => setOrdered(s.orders.length)).catch(() => setOrdered(null))
+    }, [current?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    const shopLocked = !drink && !isNew && !!ordered
     const [uploading, setUploading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [bulkOpen, setBulkOpen] = useState(false)
@@ -199,6 +206,21 @@ function MenuEditor({
         toast.show(`加入 ${parsed.length} 種${unit}`)
     }
 
+    /** 飲料流團：把截止時間改成現在，大家的畫面就不會再跳出來；訂單留在統計裡 */
+    async function closeDrink() {
+        if (!window.confirm('流團？關掉後大家就不能再點，已經點的會留在「訂單統計」。')) return
+        setSaving(true)
+        try {
+            await api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()})
+            toast.show('飲料團已關閉', 'ok', 'boba')
+            await onSaved()
+        } catch (e) {
+            toast.show((e as Error).message, 'error')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     async function save() {
         const tidy = (list: MenuItem[]) => list.map((it) => ({...it, name: it.name.trim()})).filter((it) => it.name)
         const items = tidy(draft.items)
@@ -252,9 +274,14 @@ function MenuEditor({
                     {!isNew && isClosed(draft.deadline) && <span className="pill text-stamp-dark">已截止</span>}
                 </p>
                 )}
-                {!isNew && (
+                {!isNew && drink && !isClosed(draft.deadline) && (
+                    <button className="btn btn-ghost text-stamp-dark" onClick={closeDrink} disabled={saving}>
+                        流團，關閉這團
+                    </button>
+                )}
+                {!isNew && !drink && (
                     <button className="btn btn-ghost" onClick={startNewWeek}>
-                        {drink ? '開新的飲料團' : '開新的一週'}
+                        開新的一週
                     </button>
                 )}
             </div>
@@ -297,7 +324,7 @@ function MenuEditor({
                     <label className="field">
                         <span className="field-label">常用店家</span>
                         <select value={(drink ? DRINK_SHOPS : SHOPS).some((s) => s.shop === draft.shop) ? draft.shop : ''}
-                                onChange={(e) => pickShop(e.target.value)}>
+                                onChange={(e) => pickShop(e.target.value)} disabled={shopLocked}>
                             <option value="">其他店家（自己填）</option>
                             {(drink ? DRINK_SHOPS : SHOPS).map((s) => (
                                 <option key={s.shop}>{s.shop}</option>
@@ -307,7 +334,8 @@ function MenuEditor({
                     <label className="field">
                         <span className="field-label">店家名稱</span>
                         <input value={draft.shop} onChange={(e) => set('shop', e.target.value)}
-                               placeholder="例如：阿嬤灶腳便當"/>
+                               placeholder="例如：阿嬤灶腳便當" disabled={shopLocked}/>
+                        {shopLocked && <span className="text-sm text-stamp-dark">已經有 {ordered} 人點了，不能換店家；要換請「開新的一週」。</span>}
                     </label>
                     </>
                     )}
@@ -517,9 +545,9 @@ function StatsPanel({
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-wrap items-center gap-3">
-                <label>
+                <label className="max-w-full max-md:w-full">
                     <span className="sr-only">選擇哪一週</span>
-                    <select className="w-auto rounded-full px-4 py-2" value={weekId}
+                    <select className="w-auto max-w-full rounded-full px-4 py-2 max-md:w-full" value={weekId}
                             onChange={(e) => setWeekId(e.target.value)}>
                         {weeks.map((w) => (
                             <option key={w.id} value={w.id}>
@@ -572,7 +600,7 @@ function StatsPanel({
                             {snap.orders.length === 0 ? (
                                 <p className="text-soy-soft">還沒有人點。</p>
                             ) : (
-                                <div className="overflow-x-auto">
+                                <div className="relative overflow-x-auto">
                                     <table className="w-full text-md">
                                         <thead>
                                         <tr>
@@ -639,7 +667,7 @@ function StatsPanel({
                         {snap.orders.length === 0 ? (
                             <p className="text-soy-soft">這週還沒有人點。把點餐頁網址貼到群組吧！</p>
                         ) : (
-                            <div className="overflow-x-auto">
+                            <div className="relative overflow-x-auto">
                                 <table className="w-full text-md">
                                     <thead>
                                     <tr>

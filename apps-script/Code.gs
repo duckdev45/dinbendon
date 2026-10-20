@@ -121,6 +121,10 @@ var ACTIONS = {
       var rows = readRows_(sheet, WEEK_COLS);
       var hit = -1;
       for (var i = 0; i < rows.length; i++) if (rows[i].id === w.id) { hit = i; break; }
+      if (hit >= 0 && String(w.shop || '') !== rows[hit].shop) {
+        var ordered = readRows_(sheet_('orders'), ORDER_COLS).some(function (o) { return o.weekId === w.id; });
+        if (ordered) throw new Error('已經有人點了，不能換店家');
+      }
       var now = new Date().toISOString();
       var clean = function (it) {
         return { id: String(it.id), name: String(it.name).trim(), price: Math.max(0, Math.round(Number(it.price) || 0)) };
