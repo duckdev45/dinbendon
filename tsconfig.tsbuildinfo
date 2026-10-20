@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/types.ts","./src/api/demo.ts","./src/api/gas.ts","./src/api/index.ts","./src/components/Bowl.tsx","./src/components/Countdown.tsx","./src/components/Toast.tsx","./src/lib/excel.ts","./src/lib/image.ts","./src/lib/stats.ts","./src/lib/time.ts","./src/pages/AdminPage.tsx","./src/pages/OrderPage.tsx"],"version":"5.9.3"}
