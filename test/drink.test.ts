@@ -50,8 +50,8 @@ test('訂購統計表：同飲料同甜度冰量加料併一列，單價含加�
 
 test('點餐頁：便當永遠是最新便當菜單，飲料團只在收單中出現', () => {
   const now = new Date('2026-10-20T07:30:00.000Z').getTime()
-  assert.deepEqual(currentRounds([drink, bento], now), { bento, drink })
-  assert.deepEqual(currentRounds([drink, bento], now + 3600_000), { bento, drink: null })
+  assert.deepEqual(currentRounds([drink, bento], now), { bento, drink, snack: null })
+  assert.deepEqual(currentRounds([drink, bento], now + 3600_000), { bento, drink: null, snack: null })
   // 舊資料沒有 kind = 便當
   const old = { ...bento, kind: '' } as unknown as Week
   assert.equal(currentRounds([old], now).bento, old)

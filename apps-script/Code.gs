@@ -5,12 +5,19 @@
  * 指令碼屬性（專案設定 → 指令碼屬性）：
  *   IMAGE_FOLDER_ID  菜單圖片要放的 Drive 資料夾 ID（選填，沒填會自動建一個「dinbendon 菜單」）
  *
- * 第一次部署前先在編輯器執行一次 setup()，會建立 weeks / orders 兩張工作表。
+ * 第一次部署前先在編輯器執行一次 setup()，會建立 weeks / orders / shops 三張工作表。
+ * （舊試算表不用重跑：shops 表第一次用到時自動建立）
  */
 
 // 新欄位只能加在最後：讀寫都照欄位順序，舊試算表的表頭會自動補上
 var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt', 'kind', 'addons', 'host', 'mode'];
 var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt', 'options', 'addonIds']; // 一人一份；金額照菜單單價＋加料算
+// 後台手動維護的常用店家，一種團一家一列；開過的團前端會自動算進常用店家，不寫這張表
+var SHOP_COLS = ['kind', 'shop', 'imageUrl', 'items', 'addons', 'hidden', 'updatedAt'];
+var COLS = { weeks: WEEK_COLS, orders: ORDER_COLS, shops: SHOP_COLS };
+
+// bento 每週便當；drink / snack 限時的飲料團、點心團（舊資料 kind 空白 = 便當）
+var KINDS = ['bento', 'drink', 'snack'];
 
 // 跟前端 src/lib/drink.ts 同一份清單
 var SUGAR = ['正常糖', '少糖', '半糖', '微糖', '無糖'];
@@ -34,14 +41,16 @@ function doPost(e) {
 }
 
 var ACTIONS = {
-  // 便當永遠是最新一筆便當菜單；飲料團只在收單中才回傳
+  // 便當永遠是最新一筆便當菜單；飲料團、點心團只在收單中才回傳
   getCurrent: function () {
     var weeks = allWeeks_();
-    var bento = weeks.filter(function (w) { return w.kind !== 'drink'; })[0] || null;
-    var drink = weeks.filter(function (w) { return w.kind === 'drink'; })[0] || null;
-    if (drink && Date.now() >= new Date(drink.deadline).getTime()) drink = null;
-    var cur = snapshot_(bento);
-    cur.drink = drink ? snapshot_(drink) : null;
+    var open = function (kind) {
+      var w = weeks.filter(function (x) { return x.kind === kind; })[0];
+      return w && Date.now() < new Date(w.deadline).getTime() ? snapshot_(w) : null;
+    };
+    var cur = snapshot_(weeks.filter(function (w) { return w.kind === 'bento'; })[0] || null);
+    cur.drink = open('drink');
+    cur.snack = open('snack');
     return cur;
   },
 
@@ -105,10 +114,10 @@ var ACTIONS = {
     return null;
   },
 
-  // 順便帶最新一團的訂單，後台進來只要打一次（Apps Script 每次呼叫都要 1–3 秒）
+  // 順便帶最新一團的訂單和常用店家，後台進來只要打一次（Apps Script 每次呼叫都要 1–3 秒）
   adminListWeeks: function (p) {
     var weeks = allWeeks_();
-    return { weeks: weeks, latest: snapshot_(weeks[0] || null) };
+    return { weeks: weeks, latest: snapshot_(weeks[0] || null), shops: allShops_() };
   },
 
   adminGetWeek: function (p) {
@@ -132,7 +141,16 @@ var ACTIONS = {
         return { id: String(it.id), name: String(it.name).trim(), price: Math.max(0, Math.round(Number(it.price) || 0)) };
       };
       var items = (w.items || []).map(clean);
-      var kind = w.kind === 'drink' ? 'drink' : 'bento';
+      // 不認得的種類直接擋掉，不要存成便當蓋掉這週菜單
+      var kind = w.kind || 'bento';
+      if (KINDS.indexOf(kind) < 0) throw new Error('未知的菜單種類：' + kind);
+      // 同一種限時團同時只能有一團收單中（跟前端 src/lib/drink.ts openConflict 一樣），不然新的會把還在收單的那團擠掉
+      if (kind !== 'bento') {
+        var open = allWeeks_().filter(function (x) { return x.kind === kind; })[0];
+        if (open && open.id !== String(w.id) && Date.now() < new Date(open.deadline).getTime()) {
+          throw new Error((open.host || '有人') + ' 已經開了' + (kind === 'drink' ? '飲料' : '點心') + '團，重新整理看看');
+        }
+      }
       var row = {
         id: String(w.id),
         shop: String(w.shop || ''),
@@ -144,11 +162,46 @@ var ACTIONS = {
         updatedAt: now,
         kind: kind,
         addons: JSON.stringify(kind === 'drink' ? (w.addons || []).map(clean) : []),
-        host: kind === 'drink' ? String(w.host || '').trim().slice(0, 20) : '',
-        mode: w.mode === 'group' ? 'group' : 'treat', // 飲料團：treat 抖內、group 揪團
+        host: kind !== 'bento' ? String(w.host || '').trim().slice(0, 20) : '',
+        mode: w.mode === 'group' ? 'group' : 'treat', // 飲料團、點心團：treat 抖內、group 揪團
       };
       writeRow_(sheet, WEEK_COLS, row, hit >= 0 ? hit + 2 : null);
       return castWeek_(row);
+    });
+  },
+
+  // 新增／修改／刪除（hidden）常用店家；p.from 是改名前的店名，舊名字記成刪掉
+  adminSaveShop: function (p) {
+    return withLock_(function () {
+      var s = p.shop || {};
+      if (KINDS.indexOf(s.kind) < 0) throw new Error('未知的菜單種類：' + s.kind);
+      var name = String(s.shop || '').trim().slice(0, 40);
+      if (!name) throw new Error('填一下店家名稱');
+      var sheet = sheet_('shops');
+      var rows = readRows_(sheet, SHOP_COLS);
+      var now = new Date().toISOString();
+      var put = function (row) {
+        var hit = -1;
+        for (var i = 0; i < rows.length; i++) if (rows[i].kind === row.kind && rows[i].shop === row.shop) { hit = i; break; }
+        writeRow_(sheet, SHOP_COLS, row, hit >= 0 ? hit + 2 : null);
+        if (hit < 0) rows.push(row);
+      };
+      var pairs = function (list) {
+        return JSON.stringify((list || [])
+          .map(function (x) { return [String(x[0] || '').trim(), Math.max(0, Math.round(Number(x[1]) || 0))]; })
+          .filter(function (x) { return x[0]; }));
+      };
+      var from = String(p.from || '').trim().slice(0, 40);
+      // 改名不能改成另一家已經有的名字，不然會蓋掉那家的菜單
+      if (from && from !== name && rows.some(function (r) { return r.kind === s.kind && r.shop === name && r.hidden !== '1'; })) {
+        throw new Error('已經有「' + name + '」了，點它來改');
+      }
+      if (from && from !== name) put({ kind: s.kind, shop: from, imageUrl: '', items: '[]', addons: '[]', hidden: '1', updatedAt: now });
+      put({
+        kind: s.kind, shop: name, imageUrl: String(s.imageUrl || ''), items: pairs(s.items),
+        addons: pairs(s.kind === 'drink' ? s.addons : []), hidden: s.hidden ? '1' : '', updatedAt: now,
+      });
+      return allShops_();
     });
   },
 
@@ -181,6 +234,7 @@ var ACTIONS = {
 function setup() {
   ensureSheet_('weeks', WEEK_COLS);
   ensureSheet_('orders', ORDER_COLS);
+  ensureSheet_('shops', SHOP_COLS);
   imageFolder_(); // 順便觸發 Drive 授權
   Logger.log('完成，可以部署成網頁應用程式了');
 }
@@ -191,6 +245,15 @@ function allWeeks_() {
   return readRows_(sheet_('weeks'), WEEK_COLS)
     .map(castWeek_)
     .sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
+}
+
+function allShops_() {
+  return readRows_(sheet_('shops'), SHOP_COLS).map(function (r) {
+    return {
+      kind: r.kind, shop: r.shop, imageUrl: r.imageUrl, items: parseList_(r.items), addons: parseList_(r.addons),
+      hidden: r.hidden === '1', updatedAt: r.updatedAt,
+    };
+  });
 }
 
 function findWeek_(id) {
@@ -218,7 +281,7 @@ function castItems_(v) {
 
 function castWeek_(r) {
   return {
-    id: r.id, kind: r.kind === 'drink' ? 'drink' : 'bento', shop: r.shop, imageUrl: r.imageUrl, deadline: r.deadline,
+    id: r.id, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'bento', shop: r.shop, imageUrl: r.imageUrl, deadline: r.deadline,
     items: castItems_(r.items), addons: castItems_(r.addons), host: r.host || '', mode: r.mode === 'group' ? 'group' : 'treat',
     createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
@@ -235,7 +298,7 @@ function castOrder_(r) {
 // ───────────────────────── 試算表工具
 
 function sheet_(name) {
-  return ensureSheet_(name, name === 'weeks' ? WEEK_COLS : ORDER_COLS);
+  return ensureSheet_(name, COLS[name]);
 }
 
 function ensureSheet_(name, cols) {

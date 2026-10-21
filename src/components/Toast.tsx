@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BobaCup } from './BobaCup'
 import { Bowl } from './Bowl'
+import { WheelCake } from './WheelCake'
 
 export type ToastKind = 'ok' | 'error'
-/** 成功卡片上的吉祥物：便當用碗公、飲料用珍奶 */
-export type ToastIcon = 'bowl' | 'boba'
+/** 成功卡片上的吉祥物：便當用碗公、飲料用珍奶、點心用車輪餅 */
+export type ToastIcon = 'bowl' | 'boba' | 'wheel'
 
 export function useToast() {
   const [toast, setToast] = useState<{ text: string; kind: ToastKind; icon: ToastIcon; key: number } | null>(null)
@@ -27,7 +28,13 @@ export function useToast() {
       className="fixed inset-0 z-60 m-auto flex h-fit w-fit max-w-[calc(100vw-32px)] animate-pop flex-col items-center gap-2 rounded-card border-3 border-soy bg-scallion px-10 pt-4 pb-6 text-center text-[1.4rem] text-rice shadow-pop"
       role="status"
     >
-      {toast.icon === 'boba' ? <BobaCup mood="happy" size={90} decorative /> : <Bowl mood="happy" size={110} decorative />}
+      {toast.icon === 'boba' ? (
+        <BobaCup mood="happy" size={90} decorative />
+      ) : toast.icon === 'wheel' ? (
+        <WheelCake mood="happy" size={110} decorative />
+      ) : (
+        <Bowl mood="happy" size={110} decorative />
+      )}
       <span>{toast.text}</span>
       <button
         className="absolute -top-4 -right-4 size-11 cursor-pointer rounded-full border-3 border-soy bg-rice text-[1.6rem] leading-none text-soy hover:bg-stamp hover:text-rice"

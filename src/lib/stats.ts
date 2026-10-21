@@ -84,14 +84,16 @@ export function normName(name: string) {
   return name.trim().toLowerCase()
 }
 
-/** 複製用的文字：便當照品項數量；飲料一人一行「鴨子 奶茶 無糖 少冰 +珍珠」，揪團後面帶要付的錢 */
+/** 複製用的文字：便當照品項數量；飲料、點心一人一行「鴨子 奶茶 無糖 少冰 +珍珠」，揪團後面帶要付的錢 */
 export function shopText(week: Week, stats: Stats, orders: Order[]): string {
   const total = (unit: string) => `共 ${stats.total} ${unit}${stats.amount ? `，$${stats.amount}` : ''}`
-  if (week.kind === 'drink') {
+  if (week.kind === 'drink' || week.kind === 'snack') {
+    const drink = week.kind === 'drink'
     const group = week.mode === 'group'
     const host = week.host ? `・${week.host}${group ? '揪團' : '請客'}` : ''
     const lines = orders.map((o) => (group ? `${personLine(o)} $${orderPrice(week, o)}` : personLine(o)))
-    return [`${week.shop || '飲料'} 飲料（全部 L）${host}`, ...lines, total('杯')].join('\n')
+    const head = drink ? `${week.shop || '飲料'} 飲料（全部 L）` : `${week.shop || '點心'} 點心`
+    return [`${head}${host}`, ...lines, total(drink ? '杯' : '份')].join('\n')
   }
   const lines = stats.items.filter((s) => s.count > 0).map((s) => `${s.name} × ${s.count}`)
   return [`${week.shop || '便當'} 訂單`, ...lines, total('個')].join('\n')

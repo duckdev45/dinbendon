@@ -6,6 +6,7 @@ import type {Order, Snapshot, Week} from '../types'
 import {BobaCup} from './BobaCup'
 import {ShopLogo} from './ShopLogo'
 import type {useToast} from './Toast'
+import {WheelCake} from './WheelCake'
 
 const CHIP =
     'cursor-pointer rounded-full border-2 border-soy bg-rice px-3 py-1 text-md has-checked:bg-yolk has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-bowl-blue'
@@ -24,10 +25,16 @@ function clock(ms: number) {
     return h > 0 ? `${h}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}` : `${p(Math.floor(s / 60))}:${p(s % 60)}`
 }
 
+// 飲料團、點心團只差在用字、吉祥物，還有飲料多了甜度冰量加料
+const WORDS = {
+    drink: {unit: '飲料', eat: '喝', one: '杯', Mascot: BobaCup, icon: 'boba'},
+    snack: {unit: '點心', eat: '吃', one: '個', Mascot: WheelCake, icon: 'wheel'},
+} as const
+
 /**
- * 飲料團：像廣告一樣從畫面中間跳出來，按「我要喝」才進點飲料。
+ * 飲料團、點心團：像廣告一樣從畫面中間跳出來，按「我要喝／我要吃」才進點單。
  * 抖內（有人請客）顯示「限時 BONUS!」；揪團（各付各的）顯示「限時揪團!」。
- * 按 × 收成右下角的倒數小卡；已經點過的人進來不自動彈。便當頁面完全不動。
+ * 按 × 收成右下角的倒數小卡（放在點餐頁的右下角欄位裡，兩團同時開會上下疊）；已經點過的人進來不自動彈。便當頁面完全不動。
  */
 export function DrinkBonus({
                                bonus,
@@ -35,19 +42,25 @@ export function DrinkBonus({
                                setName,
                                onChange,
                                toast,
+                               autoOpen = true,
                            }: {
     bonus: Snapshot & { week: Week }
+    /** false：一開始就收成右下角小卡（另一團已經在畫面上，不要兩張廣告疊在一起） */
+    autoOpen?: boolean
     name: string
     setName: (name: string) => void
     onChange: () => Promise<void>
     toast: ReturnType<typeof useToast>
 }) {
     const {week, orders} = bonus
+    const drink = week.kind === 'drink'
+    const {unit, eat, one, Mascot, icon} = WORDS[drink ? 'drink' : 'snack']
     const group = week.mode === 'group'
     const badge = group ? '限時揪團' : '限時 BONUS'
-    const title = group ? `${week.host} 揪團喝飲料！` : `${week.host || '老闆'} 請喝飲料！`
+    const title = group ? `${week.host} 揪團${eat}${unit}！` : `${week.host || '老闆'} 請${eat}${unit}！`
+    const size = drink ? '一律 L' : ''
     const mine = name.trim() ? orders.find((o) => normName(o.name) === normName(name)) : undefined
-    const [view, setView] = useState<'ad' | 'form' | 'done' | 'closed'>(mine ? 'closed' : 'ad')
+    const [view, setView] = useState<'ad' | 'form' | 'done' | 'closed'>(mine || !autoOpen ? 'closed' : 'ad')
     const [done, setDone] = useState<Order | null>(null)
     const [itemId, setItemId] = useState('')
     const [sugar, setSugar] = useState('')
@@ -80,18 +93,18 @@ export function DrinkBonus({
     async function submit(e: React.FormEvent) {
         e.preventDefault()
         if (!name.trim()) return toast.show('先填你的名字', 'error')
-        if (!itemId) return toast.show('還沒選飲料喔', 'error')
-        if (!sugar || !ice) return toast.show('甜度、冰量都要選', 'error')
+        if (!itemId) return toast.show(`還沒選${unit}喔`, 'error')
+        if (drink && (!sugar || !ice)) return toast.show('甜度、冰量都要選', 'error')
         setBusy(true)
         try {
-            const order = await api.placeOrder({
+            const order = await api.placeOrder(drink ? {
                 weekId: week.id,
                 name,
                 itemId,
                 sugar,
                 ice,
                 addonIds: addonId ? [addonId] : []
-            })
+            } : {weekId: week.id, name, itemId})
             // 點完在畫面中間秀一張收據，不另外跳 toast
             setDone(order)
             setView('done')
@@ -104,11 +117,11 @@ export function DrinkBonus({
     }
 
     async function cancel() {
-        if (!mine || !window.confirm(`確定不喝 ${mine.itemName} 了？`)) return
+        if (!mine || !window.confirm(`確定不${eat} ${mine.itemName} 了？`)) return
         setBusy(true)
         try {
             await api.cancelOrder(week.id, mine.name)
-            toast.show('飲料已取消', 'ok', 'boba')
+            toast.show(`${unit}已取消`, 'ok', icon)
             setItemId('')
             await onChange()
         } catch (err) {
@@ -132,10 +145,10 @@ export function DrinkBonus({
     if (view === 'closed') {
         return (
             <button
-                className="fixed right-5 bottom-5 z-40 flex animate-pop cursor-pointer items-center gap-3 rounded-card border-3 border-soy bg-yolk py-2.5 pr-6 pl-3 text-left shadow-pop transition-[translate] hover:-translate-y-1 max-md:right-3 max-md:bottom-3 max-md:gap-2 max-md:py-1.5 max-md:pr-4 max-md:pl-2"
+                className="flex animate-pop cursor-pointer items-center gap-3 rounded-card border-3 border-soy bg-yolk py-2.5 pr-6 pl-3 text-left shadow-pop transition-[translate] hover:-translate-y-1 max-md:gap-2 max-md:py-1.5 max-md:pr-4 max-md:pl-2"
                 onClick={() => setView(mine ? 'form' : 'ad')}
             >
-                <BobaCup size={72} decorative className="max-md:h-auto max-md:w-[44px]"/>
+                <Mascot size={72} decorative className="max-md:h-auto max-md:w-[44px]"/>
                 <span className="leading-tight">
           <span className="block text-[1.05rem] text-stamp">{badge}{mine ? '・已點' : '！'}</span>
           <span className="font-num text-[2rem] leading-none font-bold tabular-nums max-md:text-[1.4rem]">{clock(left)}</span>
@@ -157,13 +170,13 @@ export function DrinkBonus({
                             className="-rotate-6 animate-stamp-in rounded-xl border-5 border-stamp bg-rice px-4 py-0.5 font-num text-[2.8rem] font-bold tracking-wide whitespace-nowrap text-stamp max-md:text-[1.8rem]">
                             {badge}!
                         </div>
-                        <BobaCup size={200} className="max-md:h-auto max-md:w-[110px]"/>
+                        <Mascot size={200} className="max-md:h-auto max-md:w-[110px]"/>
                         <h2 className="mb-0 text-[2.4rem] max-md:text-[1.6rem]">{title}</h2>
                         <div className="flex items-center gap-2.5">
-                            <ShopLogo logo={week.imageUrl} shop={week.shop} size={64} className="max-md:size-12!"/>
+                            {(drink || week.imageUrl) && <ShopLogo logo={week.imageUrl} shop={week.shop} size={64} className="max-md:size-12!"/>}
                             <span className="text-left leading-snug">
                 <b className="block">{week.shop}</b>
-                <span className="text-sm text-soy-soft">一律 L{group && '・各付各的'}</span>
+                <span className="text-sm text-soy-soft">{[size, group && '各付各的'].filter(Boolean).join('・')}</span>
               </span>
                         </div>
                         <div
@@ -171,23 +184,23 @@ export function DrinkBonus({
                             {clock(left)}
                         </div>
                         <button className="btn btn-primary btn-big w-full" onClick={() => setView('form')}>
-                            我要喝！
+                            我要{eat}！
                         </button>
                     </div>
                 </div>
             ) : view === 'done' && done ? (
                 <div className="relative flex w-full max-w-[460px] animate-pop flex-col items-center gap-3 rounded-card border-3 border-soy bg-rice px-6 pt-6 pb-6 text-center shadow-pop" role="status">
                     {close}
-                    <BobaCup mood="happy" size={120} decorative/>
+                    <Mascot mood="happy" size={120} decorative/>
                     <h2 className="mb-0 text-[2rem]">點好了！</h2>
                     <p className="w-full rounded-xl border-2 border-dashed border-soy bg-yolk-soft px-4 py-3 text-[1.3rem] leading-snug">
                         {personLine(done)}
                     </p>
                     <p className="text-soy-soft">
-                        {week.shop}・L{group ? `・要付 $${orderPrice(week, done)}` : ''}・截止前都可以換
+                        {[week.shop, drink && 'L', group && `要付 $${orderPrice(week, done)}`, '截止前都可以換'].filter(Boolean).join('・')}
                     </p>
                     <div className="flex w-full gap-3">
-                        <button className="btn flex-1" onClick={() => setView('form')}>換一杯</button>
+                        <button className="btn flex-1" onClick={() => setView('form')}>換一{one}</button>
                         <button className="btn btn-primary flex-1" onClick={() => setView('closed')}>好，關閉</button>
                     </div>
                 </div>
@@ -198,14 +211,22 @@ export function DrinkBonus({
                 >
                     {close}
                     <div className="flex items-center gap-3 pr-10">
-                        <ShopLogo logo={week.imageUrl} shop={week.shop} size={56}/>
+                        {drink ? <ShopLogo logo={week.imageUrl} shop={week.shop} size={56}/> : <Mascot size={56} decorative/>}
                         <div>
                             <p className="text-sm text-stamp">
                                 {badge}・剩 <span className="font-num font-bold tabular-nums">{clock(left)}</span>
                             </p>
-                            <h2 className="mb-0 max-md:text-base">{week.shop}・一律 L{group && '・各付各的'}</h2>
+                            <h2 className="mb-0 max-md:text-base">{[week.shop, size, group && '各付各的'].filter(Boolean).join('・')}</h2>
                         </div>
                     </div>
+
+                    {/* 點心團選填的照片；飲料團的 imageUrl 是店家 logo，已經在上面 */}
+                    {!drink && week.imageUrl && (
+                        <a href={week.imageUrl} target="_blank" rel="noreferrer" className="block">
+                            <img src={week.imageUrl} alt={`${week.shop} 照片`}
+                                 className="max-h-[260px] w-full rounded-tile border-3 border-soy bg-rice object-contain max-md:max-h-[180px]"/>
+                        </a>
+                    )}
 
                     <label className="field">
                         <span className="field-label">你的名字</span>
@@ -220,19 +241,19 @@ export function DrinkBonus({
                 你點了 <b>{orderLabel(mine)}</b>（${orderPrice(week, mine)}）
               </span>
                             <button type="button" className="link-btn" onClick={cancel} disabled={busy}>
-                                不喝了
+                                不{eat}了
                             </button>
                         </div>
                     )}
 
                     <fieldset className="field">
-                        <legend className="field-label">選飲料</legend>
+                        <legend className="field-label">選{unit}</legend>
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2" role="radiogroup">
                             {week.items.map((it) => (
                                 // 一律一行：名字後面的（只有 M）（茶乳）縮成小字，太長就截掉，滑鼠移上去看全名
                                 <label key={it.id} title={it.name}
                                        className={`${CHIP} flex items-center gap-1.5 rounded-xl whitespace-nowrap`}>
-                                    <input className="sr-only" type="radio" name="drink" checked={itemId === it.id}
+                                    <input className="sr-only" type="radio" name="item" checked={itemId === it.id}
                                            onChange={() => setItemId(it.id)}/>
                                     <span className="min-w-0 truncate">{splitNote(it.name)[0]}</span>
                                     {splitNote(it.name)[1] && (
@@ -244,7 +265,7 @@ export function DrinkBonus({
                         </div>
                     </fieldset>
 
-                    {(
+                    {drink && (
                         [
                             ['甜度', SUGAR, sugar, setSugar],
                             ['冰量', ICE, ice, setIce],
@@ -264,7 +285,7 @@ export function DrinkBonus({
                         </fieldset>
                     ))}
 
-                    {week.addons.length > 0 && (
+                    {drink && week.addons.length > 0 && (
                         <fieldset className="field">
                             <legend className="field-label">加料</legend>
                             <div className="flex flex-wrap gap-2" role="radiogroup">
@@ -281,7 +302,7 @@ export function DrinkBonus({
                     )}
 
                     <button className="btn btn-primary btn-big" disabled={busy}>
-                        {busy ? '送出中…' : mine ? '換這杯' : '就喝這杯！'}
+                        {busy ? '送出中…' : mine ? `換這${one}` : `就${eat}這${one}！`}
                     </button>
                 </form>
             )}

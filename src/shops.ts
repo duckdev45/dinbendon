@@ -1,5 +1,6 @@
-// 常去的店家：後台「菜單設定」下拉選了就自動帶入店名、菜單照片、便當種類和單價
+// 內建的常去店家：後台「便當」分頁下拉選了就自動帶入店名、菜單照片、便當種類和單價
 // 照片放 public/menus/，檔名固定不要改，舊週次存的是這個路徑
+import type { RoundKind, ShopPreset, ShopRow, Week } from './types'
 
 /** 公司補助上限：超過的便當選店家時不帶入，存菜單時也擋 */
 export const MAX_PRICE = 150
@@ -940,3 +941,26 @@ export const DRINK_SHOPS: { shop: string; logo: string; items: [name: string, pr
     ],
   },
 ]
+
+/**
+ * 常用店家＝內建清單＋開過的團＋後台手動維護的（shops 表），同一家取最新的那份；
+ * 最新的是「刪掉」就不顯示，之後又用同一家開團會再出現
+ */
+export function presets(kind: RoundKind, weeks: Week[], rows: ShopRow[]): ShopPreset[] {
+  const best = new Map<string, { at: string; hidden: boolean; p: ShopPreset }>()
+  const offer = (at: string, hidden: boolean, p: ShopPreset) => {
+    const cur = best.get(p.shop)
+    if (!cur || at > cur.at) best.set(p.shop, { at, hidden, p })
+  }
+  const pairs = (list: { name: string; price: number }[]) => list.map((it): [string, number] => [it.name, it.price])
+  if (kind === 'bento') SHOPS.forEach((s) => offer('', false, { kind, shop: s.shop, imageUrl: s.image, items: s.items, addons: [] }))
+  if (kind === 'drink') DRINK_SHOPS.forEach((s) => offer('', false, { kind, shop: s.shop, imageUrl: s.logo, items: s.items, addons: s.addons }))
+  for (const w of weeks) {
+    if (w.kind !== kind || !w.shop.trim()) continue
+    offer(w.updatedAt ?? '', false, { kind, shop: w.shop.trim(), imageUrl: w.imageUrl, items: pairs(w.items), addons: pairs(w.addons ?? []) })
+  }
+  for (const r of rows) {
+    if (r.kind === kind) offer(r.updatedAt, r.hidden, { kind, shop: r.shop, imageUrl: r.imageUrl, items: r.items, addons: r.addons })
+  }
+  return [...best.values()].filter((x) => !x.hidden).map((x) => x.p)
+}

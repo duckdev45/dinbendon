@@ -6,9 +6,10 @@ import {Countdown} from '../components/Countdown'
 import {BobaBuddy} from '../components/BobaBuddy'
 import {DrinkBonus} from '../components/DrinkBonus'
 import {useToast} from '../components/Toast'
+import {WheelCake} from '../components/WheelCake'
 import {computeStats, normName} from '../lib/stats'
 import {isClosed} from '../lib/time'
-import type {Current} from '../types'
+import type {Current, Snapshot} from '../types'
 
 const NAME_KEY = 'dinbendon:name'
 
@@ -110,22 +111,31 @@ export function OrderPage() {
         }
     }
 
-    // 老闆請喝飲料：收單中才有，跟便當各點各的
-    const drinkWeek = snap?.drink?.week
-    const drink = drinkWeek ? (
-        <DrinkBonus
-            key={drinkWeek.id}
-            bonus={{week: drinkWeek, orders: snap!.drink!.orders}}
-            name={name}
-            setName={setName}
-            toast={toast}
-            onChange={async () => {
-                if (name.trim()) rememberName(name)
-                await refresh()
-            }}
-        />
-    ) : (
-        <BobaBuddy/>
+    // 飲料團、點心團：收單中才有，跟便當各點各的
+    const bonus = (round: Snapshot | null | undefined, autoOpen = true) =>
+        round?.week && (
+            <DrinkBonus
+                key={round.week.id}
+                autoOpen={autoOpen}
+                bonus={{week: round.week, orders: round.orders}}
+                name={name}
+                setName={setName}
+                toast={toast}
+                onChange={async () => {
+                    if (name.trim()) rememberName(name)
+                    await refresh()
+                }}
+            />
+        )
+    // 有點心團時右下角一定疊兩個（點心小卡＋飲料小卡或珍奶）
+    const stacked = !!snap?.snack
+    // 右下角：收起來的倒數小卡上下疊；沒有飲料團時放珍奶
+    const drink = (
+        <div className="fixed right-5 bottom-5 z-40 flex flex-col items-end gap-3 max-md:right-3 max-md:bottom-3">
+            {/* 有飲料團時點心團先收著，不然廣告會疊在一起、或蓋住填到一半的飲料單 */}
+            {bonus(snap?.snack, !snap?.drink)}
+            {bonus(snap?.drink) || <BobaBuddy/>}
+        </div>
     )
 
     // ── 載入中 / 錯誤 / 沒有菜單
@@ -145,16 +155,17 @@ export function OrderPage() {
 
     if (!week) {
         return (
-            // 完全沒有便當團：讓人直接選要開便當還是飲料
+            // 完全沒有便當團：讓人直接選要開便當、飲料還是點心
             <main className="page flex min-h-[70vh] flex-col items-center justify-center gap-6 pb-40 text-center">
                 {toast.node}
                 {drink}
                 <h1 className="text-[1.8rem]">現在沒有團，要開什麼？</h1>
-                <div className="grid w-full max-w-[640px] grid-cols-2 gap-6 max-md:grid-cols-1">
+                <div className="grid w-full max-w-[960px] grid-cols-3 gap-6 max-md:grid-cols-1">
                     {(
                         [
                             ['#/admin/menu', <Bowl key="b" size={170}/>, '開便當團', '一人一個，週五 13:00 截止'],
                             ['#/admin/drink', <BobaCup key="d" size={130}/>, '開飲料團', '抖內或揪團，拉霸抽今天喝哪家'],
+                            ['#/admin/snack', <WheelCake key="s" size={150}/>, '開點心團', '下午茶，抖內或揪團，菜單自己填'],
                         ] as const
                     ).map(([href, icon, label, hint]) => (
                         <a key={href} href={href}
@@ -170,7 +181,7 @@ export function OrderPage() {
     }
 
     return (
-        <main className="page pb-44">{/* 右下角的飲料小卡／珍奶，留空間才不會蓋到訂便當按鈕 */}
+        <main className={`page ${stacked ? 'pb-72' : 'pb-44'}`}>{/* 右下角的飲料／點心小卡、珍奶，留空間才不會蓋到訂便當按鈕 */}
             {toast.node}
             {drink}
 

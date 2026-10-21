@@ -1,4 +1,4 @@
-import type { Api, Current, Order, Snapshot, Week } from '../types'
+import type { Api, Current, Order, ShopRow, Snapshot, Week } from '../types'
 
 /**
  * Google Apps Script Web App。
@@ -29,11 +29,12 @@ export function createGasApi(url: string): Api {
     cancelOrder: (weekId, name) => call<void>('cancelOrder', { weekId, name }),
     admin: {
       verify: (password) => call<void>('adminVerify', { password }),
-      listWeeks: (password) => call<{ weeks: Week[]; latest: Snapshot }>('adminListWeeks', { password }),
+      listWeeks: (password) => call<{ weeks: Week[]; latest: Snapshot; shops?: ShopRow[] }>('adminListWeeks', { password }),
       getWeek: (password, weekId) => call<Snapshot>('adminGetWeek', { password, weekId }),
       saveWeek: (password, week) => call<Week>('adminSaveWeek', { password, week }),
       uploadImage: (password, dataUrl, filename) => call<string>('adminUploadImage', { password, dataUrl, filename }),
       deleteOrder: (password, orderId) => call<void>('adminDeleteOrder', { password, orderId }),
+      saveShop: (password, shop, from) => call<ShopRow[]>('adminSaveShop', { password, shop, from }),
     },
   }
 }

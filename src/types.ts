@@ -5,10 +5,10 @@ export interface MenuItem {
   price: number
 }
 
-/** bento：每週便當；drink：老闆臨時請的飲料團（限時 bonus） */
-export type RoundKind = 'bento' | 'drink'
+/** bento：每週便當；drink / snack：臨時的飲料團、下午茶點心團（限時 bonus） */
+export type RoundKind = 'bento' | 'drink' | 'snack'
 
-/** 飲料團：treat 抖內（有人請客）、group 揪團（各付各的） */
+/** 飲料團、點心團：treat 抖內（有人請客）、group 揪團（各付各的） */
 export type DrinkMode = 'treat' | 'group'
 
 /** 一週一份菜單；飲料團也是一筆，用 kind 分 */
@@ -22,7 +22,7 @@ export interface Week {
   items: MenuItem[]
   /** 飲料加料；便當為空 */
   addons: MenuItem[]
-  /** 飲料團：誰開的團、抖內還是揪團；便當為空字串 / treat */
+  /** 飲料團、點心團：誰開的團、抖內還是揪團；便當為空字串 / treat */
   host: string
   mode: DrinkMode
   createdAt: string
@@ -48,9 +48,10 @@ export interface Snapshot {
   orders: Order[]
 }
 
-/** 點餐頁：這週便當＋收單中的飲料團（沒有就 null） */
+/** 點餐頁：這週便當＋收單中的飲料團、點心團（沒有就 null） */
 export interface Current extends Snapshot {
   drink: Snapshot | null
+  snack: Snapshot | null
 }
 
 /** 公司每週請客，一人一個便當；金額照菜單單價算，負責人拿去請款 */
@@ -64,6 +65,21 @@ export interface PlaceOrderInput {
   addonIds?: string[]
 }
 
+/** 常用店家：開團時選了整份帶入；品項存 [名稱, 單價] */
+export interface ShopPreset {
+  kind: RoundKind
+  shop: string
+  imageUrl: string
+  items: [name: string, price: number][]
+  addons: [name: string, price: number][]
+}
+
+/** 後台手動維護的常用店家（shops 工作表）；hidden = 刪掉 */
+export interface ShopRow extends ShopPreset {
+  hidden: boolean
+  updatedAt: string
+}
+
 export type WeekDraft = Omit<Week, 'createdAt' | 'updatedAt'>
 
 export interface Api {
@@ -73,11 +89,13 @@ export interface Api {
   cancelOrder(weekId: string, name: string): Promise<void>
   admin: {
     verify(password: string): Promise<void>
-    /** 順便帶最新一團的訂單，省一次往返 */
-    listWeeks(password: string): Promise<{ weeks: Week[]; latest: Snapshot }>
+    /** 順便帶最新一團的訂單和常用店家，省往返；舊版 Code.gs 沒有 shops */
+    listWeeks(password: string): Promise<{ weeks: Week[]; latest: Snapshot; shops?: ShopRow[] }>
     getWeek(password: string, weekId: string): Promise<Snapshot>
     saveWeek(password: string, week: WeekDraft): Promise<Week>
     uploadImage(password: string, dataUrl: string, filename: string): Promise<string>
     deleteOrder(password: string, orderId: string): Promise<void>
+    /** 新增、修改、刪除（hidden）常用店家；from = 改名前的店名。回傳整份 shops */
+    saveShop(password: string, shop: Omit<ShopRow, 'updatedAt'>, from?: string): Promise<ShopRow[]>
   }
 }

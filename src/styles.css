@@ -455,14 +455,51 @@
   }
 }
 
+/* ───────── 車輪餅朋友：一樣 bob / hop，熱氣沿用碗公的 steam */
+
+.wheel-body,
+.wheel-shadow {
+  transform-box: view-box;
+  transform-origin: 100px 160px;
+}
+
+.wheel-shadow {
+  fill: var(--color-soy);
+  opacity: 0.16;
+}
+
+.wheel--idle .wheel-body {
+  animation: bob 2.4s ease-in-out infinite;
+}
+
+.wheel--idle .wheel-shadow {
+  animation: shadow-bob 2.4s ease-in-out infinite;
+}
+
+.wheel--happy .wheel-body {
+  animation: hop 0.9s cubic-bezier(0.3, 0.7, 0.4, 1.4) 2;
+}
+
+.wheel-steam {
+  opacity: 0;
+  animation: steam 2.6s ease-out infinite;
+}
+
+.wheel-steam + .wheel-steam {
+  animation-delay: 1.3s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bowl *,
   .bowl,
   .boba *,
-  .boba {
+  .boba,
+  .wheel *,
+  .wheel {
     animation: none !important;
   }
-  .bowl-steam .steam {
+  .bowl-steam .steam,
+  .wheel-steam {
     opacity: 0.8;
   }
 }

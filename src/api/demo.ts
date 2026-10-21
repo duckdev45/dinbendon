@@ -1,7 +1,7 @@
-import type { Api, Order, Snapshot, Week } from '../types'
+import type { Api, Order, ShopRow, Snapshot, Week } from '../types'
 import { defaultDeadline, isClosed } from '../lib/time'
 import { normName } from '../lib/stats'
-import { currentRounds, drinkOptions } from '../lib/drink'
+import { currentRounds, drinkOptions, openConflict } from '../lib/drink'
 import { uid } from '../lib/image'
 
 /**
@@ -13,6 +13,8 @@ const KEY = 'dinbendon:demo:v5'
 interface Db {
   weeks: Week[]
   orders: Order[]
+  /** 舊的 demo 資料沒有 */
+  shops?: ShopRow[]
 }
 
 const wait = (ms = 220) => new Promise((r) => setTimeout(r, ms))
@@ -47,8 +49,8 @@ export function createDemoApi(): Api {
     async getCurrent() {
       await wait()
       const db = load()
-      const { bento, drink } = currentRounds(db.weeks)
-      return { ...snapshot(db, bento), drink: drink ? snapshot(db, drink) : null }
+      const { bento, drink, snack } = currentRounds(db.weeks)
+      return { ...snapshot(db, bento), drink: drink ? snapshot(db, drink) : null, snack: snack ? snapshot(db, snack) : null }
     },
     async placeOrder(input) {
       await wait(400)
@@ -93,7 +95,7 @@ export function createDemoApi(): Api {
         await wait()
         const db = load()
         const weeks = [...db.weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        return { weeks, latest: snapshot(db, weeks[0] ?? null) }
+        return { weeks, latest: snapshot(db, weeks[0] ?? null), shops: db.shops ?? [] }
       },
       async getWeek(_pw, weekId) {
         await wait()
@@ -105,6 +107,8 @@ export function createDemoApi(): Api {
         const db = load()
         const now = new Date().toISOString()
         const prev = db.weeks.find((w) => w.id === draft.id)
+        const busy = openConflict(db.weeks, draft)
+        if (busy) throw new Error(`${busy.host || '有人'} 已經開了${busy.kind === 'drink' ? '飲料' : '點心'}團，重新整理看看`)
         if (prev && prev.shop !== draft.shop && db.orders.some((o) => o.weekId === draft.id)) throw new Error('已經有人點了，不能換店家')
         const week: Week = { ...draft, createdAt: prev?.createdAt ?? now, updatedAt: now }
         db.weeks = prev ? db.weeks.map((w) => (w.id === week.id ? week : w)) : [...db.weeks, week]
@@ -114,6 +118,20 @@ export function createDemoApi(): Api {
       async uploadImage(_pw, dataUrl) {
         await wait(600)
         return dataUrl // Demo 直接存 data URL
+      },
+      async saveShop(_pw, shop, from) {
+        await wait(400)
+        const db = load()
+        const name = shop.shop.trim()
+        if (!name) throw new Error('填一下店家名稱')
+        const updatedAt = new Date().toISOString()
+        const put = (row: ShopRow) => {
+          db.shops = [...(db.shops ?? []).filter((r) => !(r.kind === row.kind && r.shop === row.shop)), row]
+        }
+        if (from && from !== name) put({ kind: shop.kind, shop: from, imageUrl: '', items: [], addons: [], hidden: true, updatedAt })
+        put({ ...shop, shop: name, updatedAt })
+        save(db)
+        return db.shops!
       },
       async deleteOrder(_pw, orderId) {
         await wait()
