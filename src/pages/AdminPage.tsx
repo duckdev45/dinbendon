@@ -154,14 +154,14 @@ const drinkDeadline = () => new Date(Date.now() + 3600_000).toISOString()
 
 function blankDraft(kind: RoundKind): WeekDraft {
     const deadline = isBonus(kind) ? drinkDeadline() : defaultDeadline()
-    // 負責人、飲料團點心團請客的人預設都是自己（點餐頁記住的名字），預設抖內
+    // 負責人、飲料團點心團請客的人預設都是自己（點餐頁記住的名字）；飲料預設揪團，點心預設抖內
     let me = ''
     try {
         me = localStorage.getItem('dinbendon:name') ?? ''
     } catch {
         /* ignore */
     }
-    return {id: uid('w_'), kind, shop: '', imageUrl: '', deadline, items: [], addons: [], host: isBonus(kind) ? me : '', owner: me, mode: 'treat'}
+    return {id: uid('w_'), kind, shop: '', imageUrl: '', deadline, items: [], addons: [], host: isBonus(kind) ? me : '', owner: me, mode: kind === 'drink' ? 'group' : 'treat'}
 }
 
 function MenuEditor({
@@ -202,6 +202,8 @@ function MenuEditor({
     const [secret, setSecret] = useState(initialSecret)
     // 喝飲料不揪開好後在畫面中間秀連結＋通關密碼，一鍵複製整段貼到群組
     const [invite, setInvite] = useState(initialInvite)
+    // 飲料店預設拉霸抽，打開開關就直接從下拉選
+    const [direct, setDirect] = useState(false)
     const link = `${window.location.origin}${window.location.pathname}#/r/${draft.id}`
     const inviteText = [
         `【${secretName(kind)}】${draft.host} ${draft.mode === 'group' ? '揪團' : '請'}${drink ? '喝' : '吃'}${unit}！`,
@@ -237,7 +239,7 @@ function MenuEditor({
         setIsNew(true)
     }
 
-    /** 選常用店家就整份帶入；便當、點心選「其他」清空讓負責人自己填，飲料只能拉霸抽 */
+    /** 選常用店家就整份帶入；便當、點心選「其他」清空讓負責人自己填，飲料拉霸抽或直接選 */
     function pickShop(name: string) {
         const s = shops.find((x) => x.shop === name)
         // 同名品項沿用原本的 id，已經有人點的訂單才對得上
@@ -324,7 +326,7 @@ function MenuEditor({
         const items = tidy(draft.items)
         // 必填（標題有 *）照畫面由上到下檢查
         if (bonus && !draft.host.trim()) return toast.show(draft.mode === 'group' ? '填一下誰揪的團' : '填一下誰請客', 'error')
-        if (!draft.shop.trim()) return toast.show(drink ? '先拉一下拉霸，抽今天喝哪家' : '填一下店家名稱', 'error')
+        if (!draft.shop.trim()) return toast.show(drink ? (direct ? '先選今天喝哪家' : '先拉一下拉霸，抽今天喝哪家') : '填一下店家名稱', 'error')
         const end = new Date(draft.deadline).getTime()
         if (Number.isNaN(end)) return toast.show('選一下截止時間', 'error')
         if (isNew && end <= Date.now()) return toast.show('截止時間已經過了，改晚一點再開團', 'error')
@@ -471,11 +473,35 @@ function MenuEditor({
                 )}
 
                 <section className={`card flex flex-col gap-3.5 ${drink ? 'col-span-full' : ''}`}>
-                    <h2 className="mb-0">{drink ? <span className="req">今天喝哪家？</span> : bonus ? '今天吃哪家？' : '基本資料'}</h2>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="mb-0">{drink ? <span className="req">今天喝哪家？</span> : bonus ? '今天吃哪家？' : '基本資料'}</h2>
+                        {drink && isNew && shops.length > 0 && (
+                            // 膠囊開關：開 = 不拉霸，直接從下拉選
+                            <button type="button" role="switch" aria-checked={direct} aria-label="切換：不拉霸，直接選飲料店" onClick={() => setDirect(!direct)}
+                                    className="group inline-flex cursor-pointer items-center gap-2 rounded-full text-sm font-bold text-soy focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-bowl-blue">
+                                <span className="relative h-7 w-12 rounded-full border-3 border-soy bg-rice shadow-pop-sm motion-safe:transition-colors group-aria-checked:bg-yolk">
+                                    <span className="absolute top-[3px] left-[3px] size-4 rounded-full bg-soy motion-safe:transition-transform group-aria-checked:translate-x-5"/>
+                                </span>
+                                切換
+                            </button>
+                        )}
+                    </div>
                     {drink ? (
-                        // 飲料店只能拉霸抽，開團後就不能換
+                        // 飲料店拉霸抽或直接選，開團後就不能換
                         shops.length ? (
+                            direct && isNew ? (
+                                <label className="field">
+                                    <span className="field-label">飲料店</span>
+                                    <select value={shops.some((s) => s.shop === draft.shop) ? draft.shop : ''} onChange={(e) => pickShop(e.target.value)}>
+                                        <option value="" disabled>選一家</option>
+                                        {shops.map((s) => (
+                                            <option key={s.shop}>{s.shop}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            ) : (
                             <SlotMachine shops={shops.map((s) => ({shop: s.shop, logo: s.imageUrl}))} value={draft.shop} onPick={pickShop} locked={!isNew}/>
+                            )
                         ) : (
                             <p className="text-soy-soft">還沒有飲料店可以抽，先到下面「常用飲料店家」新增一家。</p>
                         )

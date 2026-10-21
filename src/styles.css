@@ -154,6 +154,9 @@
 
     ::picker(select) {
       @apply mt-2 rounded-tile border-3 border-soy bg-rice p-1.5 shadow-pop-sm;
+      /* 清單捲軸：細的醬油色，不要系統灰條 */
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-soy) transparent;
     }
 
     option {
