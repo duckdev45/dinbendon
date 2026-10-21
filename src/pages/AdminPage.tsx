@@ -1,12 +1,13 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {api} from '../api'
 import {useConfirm} from '../components/Confirm'
+import {LockIcon} from '../components/LockIcon'
 import {SlotMachine} from '../components/SlotMachine'
 import {useToast} from '../components/Toast'
 import {exportExcel} from '../lib/excel'
 import {shrinkImage, uid} from '../lib/image'
 import {MAX_PRICE, presets} from '../shops'
-import {currentRounds, endsEarly, isBonus, recentRounds, statsPick} from '../lib/drink'
+import {currentRounds, endsEarly, isBonus, recentRounds, secretName, statsPick} from '../lib/drink'
 import {computeStats, drinkSummary, orderLabel, orderPrice, shopText} from '../lib/stats'
 import {
     defaultDeadline,
@@ -156,6 +157,18 @@ function MenuEditor({
     const [isNew, setIsNew] = useState(!current)
     // 開團密碼：開新團時設定，之後刪訂單、提早結束要輸入
     const [roundPw, setRoundPw] = useState('')
+    // 喝飲料不揪的通關密碼：開團時設定，給要揪的人
+    const [secret, setSecret] = useState('')
+    // 喝飲料不揪開好後在畫面中間秀連結＋通關密碼，一鍵複製整段貼到群組
+    const [invite, setInvite] = useState(false)
+    const link = `${window.location.origin}${window.location.pathname}#/r/${draft.id}`
+    const inviteText = [
+        `【${secretName(kind)}】${draft.host} ${draft.mode === 'group' ? '揪團' : '請'}${drink ? '喝' : '吃'}${unit}！`,
+        `店家：${draft.shop}`,
+        `截止：${formatDeadline(draft.deadline)}`,
+        `連結：${link}`,
+        `通關密碼：${secret}`,
+    ].join('\n')
     // 便當、點心：已經有人點了就不能換店家（null = 還在查）
     const [ordered, setOrdered] = useState<number | null>(null)
     useEffect(() => {
@@ -234,9 +247,24 @@ function MenuEditor({
         toast.show(`加入 ${parsed.length} 種${unit}`)
     }
 
+    async function copyInvite() {
+        try {
+            await navigator.clipboard.writeText(inviteText)
+            toast.show('已複製，直接貼給要揪的人', 'ok', ICON[kind])
+        } catch {
+            toast.show('瀏覽器不讓複製，請手動選取', 'error')
+        }
+    }
+
+    /** 收單中的團還開著，也能另開一團喝飲料不揪（不會擋到、也不會擠掉公開的團） */
+    function startPrivate() {
+        setDraft({...blankDraft(kind), private: true})
+        setIsNew(true)
+    }
+
     /** 飲料、點心流團：把截止時間改成現在，大家的畫面就不會再跳出來；訂單留在統計裡 */
     async function closeDrink() {
-        const input = await ask('流團？關掉後大家就不能再點，\n已經點的會留在「訂單統計」。', {ok: '流團', password: !!current?.hasPassword, hint: pwHint(current?.owner)})
+        const input = await ask('流團？關掉後大家就不能再點，\n已經點的會留在「訂單統計」。', {ok: '流團', password: !!draft.hasPassword, hint: pwHint(draft.owner)})
         if (input === null) return
         setSaving(true)
         try {
@@ -261,6 +289,7 @@ function MenuEditor({
         if (isNew && end <= Date.now()) return toast.show('截止時間已經過了，改晚一點再開團', 'error')
         if (isNew && !draft.owner?.trim()) return toast.show('填一下負責人，有問題大家才知道要找誰', 'error')
         if (isNew && !roundPw.trim()) return toast.show('設一組開團密碼，刪訂單、提早結束要用', 'error')
+        if (isNew && draft.private && !secret.trim()) return toast.show(`${secretName(kind)}要設通關密碼，給要揪的人`, 'error')
         if (items.length === 0) return toast.show(`至少要有一種${unit}`, 'error')
         const over = bonus ? [] : items.filter((it) => it.price > MAX_PRICE)
         if (over.length) return toast.show(`便當不能超過 $${MAX_PRICE}：${over.map((it) => it.name).join('、')}`, 'error')
@@ -277,11 +306,12 @@ function MenuEditor({
             if (kind === 'snack' && isNew && !('snack' in (await api.getCurrent()))) {
                 throw new Error('後端 Code.gs 是舊版，請先貼上新版並部署，再開點心團')
             }
-            const saved = await api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), owner: draft.owner?.trim(), items, addons: tidy(draft.addons)}, input)
+            const saved = await api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), owner: draft.owner?.trim(), items, addons: tidy(draft.addons)}, input, secret)
             // 舊版 Code.gs 不認得飲料團、點心團，會存成便當蓋掉這週菜單
             if (saved.kind !== kind) throw new Error(`後端 Code.gs 是舊版，請先貼上新版並部署，再開${unit}團`)
             setDraft(saved)
-            toast.show(isNew ? (bonus ? `${draft.mode === 'group' ? '揪團' : '抖內'}開好了，大家的畫面會跳出來` : '菜單已發佈，大家可以點了') : '菜單已儲存', 'ok', ICON[kind])
+            if (isNew && saved.private) setInvite(true)
+            else toast.show(isNew ? (bonus ? `${draft.mode === 'group' ? '揪團' : '抖內'}開好了，大家的畫面會跳出來` : '菜單已發佈，大家可以點了') : '菜單已儲存', 'ok', ICON[kind])
             setIsNew(false)
             await onSaved()
         } catch (e) {
@@ -295,6 +325,34 @@ function MenuEditor({
 
     return (
         <div>
+            {invite && (
+                <div className="fixed inset-0 z-60 grid place-items-center bg-soy/50 p-4" onClick={(e) => e.target === e.currentTarget && setInvite(false)}
+                     onKeyDown={(e) => e.key === 'Escape' && setInvite(false)}>
+                    <div className="relative flex w-full max-w-[28rem] animate-pop flex-col items-center gap-4 rounded-card border-3 border-soy bg-rice p-6 text-center shadow-pop max-md:p-4"
+                         role="dialog" aria-label={`${secretName(kind)}開好了`}>
+                        <button
+                            className="absolute -top-4 -right-4 size-11 cursor-pointer rounded-full border-3 border-soy bg-rice text-[1.6rem] leading-none text-soy hover:bg-stamp hover:text-rice"
+                            onClick={() => setInvite(false)} aria-label="關閉"
+                        >
+                            ×
+                        </button>
+                        <LockIcon size={64}/>
+                        <h2 className="mb-0">{secretName(kind)}開好了！</h2>
+                        <p className="-mt-2 text-soy-soft">點餐頁不會跳出來，把連結和通關密碼傳給要揪的人</p>
+                        <label className="field w-full text-left">
+                            <span className="field-label">專屬連結</span>
+                            <input value={link} readOnly onFocus={(e) => e.target.select()}/>
+                        </label>
+                        <div className="field w-full text-left">
+                            <span className="field-label">通關密碼</span>
+                            <span className="rounded-xl border-2 border-dashed border-soy bg-yolk-soft px-4 py-2 text-center font-num text-[1.8rem] font-bold tracking-wider break-all">{secret}</span>
+                        </div>
+                        <button className="btn btn-primary btn-big w-full" onClick={copyInvite} autoFocus>
+                            複製揪團資訊
+                        </button>
+                    </div>
+                </div>
+            )}
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 {bonus && isNew ? (
                     // 誰請客／誰揪的＋抖內（請大家喝）還是揪團（各付各的）；負責人可能是別人，在下面跟密碼一起填
@@ -321,7 +379,15 @@ function MenuEditor({
                             : `正在編輯 ${formatDay(draft.deadline)}截止的菜單`}
                     {!isNew && draft.owner && `・負責人 ${draft.owner}`}
                     {!isNew && isClosed(draft.deadline) && <span className="pill text-stamp-dark">已截止</span>}
+                    {!isNew && draft.private && (
+                        <button className="link-btn ml-2 inline-flex items-center gap-1 align-middle" onClick={() => setInvite(true)}><LockIcon size={18}/>{secretName(kind)}・連結和通關密碼</button>
+                    )}
                 </p>
+                )}
+                {!isNew && bonus && !draft.private && (
+                    <button className="btn btn-ghost inline-flex items-center gap-1.5" onClick={startPrivate}>
+                        <LockIcon/>另開{secretName(kind)}
+                    </button>
                 )}
                 {!isNew && bonus && !isClosed(draft.deadline) && (
                     <button className="btn btn-ghost text-stamp-dark" onClick={closeDrink} disabled={saving}>
@@ -431,6 +497,25 @@ function MenuEditor({
                                 </label>
                             </div>
                             <span className="text-sm text-soy-soft">刪訂單、提早結束要輸入密碼；開團後兩個都不能改。</span>
+                        </div>
+                    )}
+                    {isNew && bonus && (
+                        // 喝飲料不揪：點餐頁不跳，有專屬連結＋通關密碼才看得到；通關密碼跟開團密碼分開，參加的人不能刪單
+                        <div className="flex flex-col gap-1.5">
+                            <label className="flex cursor-pointer items-center gap-2 font-bold">
+                                <input type="checkbox" className="size-5 accent-soy" checked={!!draft.private}
+                                       onChange={(e) => set('private', e.target.checked)}/>
+                                <LockIcon/>{secretName(kind)}
+                            </label>
+                            {draft.private && (
+                                <label className="field">
+                                    <span className="field-label req">通關密碼</span>
+                                    <input value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" maxLength={40} placeholder="給要揪的人"/>
+                                </label>
+                            )}
+                            <span className="text-sm text-soy-soft">
+                                {draft.private ? '點餐頁不會跳出來，開團後會複製專屬連結，連同通關密碼傳給要揪的人。' : '只想揪幾個人？勾起來，點餐頁就不會跳出來。'}
+                            </span>
                         </div>
                     )}
                 </section>
@@ -678,6 +763,9 @@ function StatsPanel({
     const [snap, setSnap] = useState<Snapshot | null>(initial?.week?.id === weekId ? initial : null)
     const [exporting, setExporting] = useState(false)
     const [history, setHistory] = useState(false)
+    // 喝飲料不揪：輸入過的通關密碼記著，重新整理不用再問；locked = 沒輸入對，看不到
+    const secrets = useRef<Record<string, string>>({})
+    const [locked, setLocked] = useState(false)
     // 下拉只放最近的團（截止不到一天）；從歷史訂單點進來的舊團也放進去，才選得到
     const options = useMemo(() => {
         const recent = recentRounds(weeks)
@@ -687,12 +775,29 @@ function StatsPanel({
 
     const load = useCallback(async () => {
         if (!weekId) return
+        let secret = secrets.current[weekId] ?? ''
+        const w = weeks.find((x) => x.id === weekId)
+        if (w?.private && !secret) {
+            const v = await ask(`${secretName(w.kind)}\n輸入通關密碼才看得到訂單`, {ok: '查看', password: true, label: '通關密碼', icon: <LockIcon size={56}/>})
+            if (v === null) {
+                setSnap(null)
+                return setLocked(true)
+            }
+            secret = v.trim()
+        }
         try {
-            setSnap(await api.admin.getWeek(pw, weekId))
+            setSnap(await api.admin.getWeek(pw, weekId, secret))
+            secrets.current[weekId] = secret
+            setLocked(false)
         } catch (e) {
             toast.show((e as Error).message, 'error')
+            if (secret) {
+                delete secrets.current[weekId]
+                setSnap(null)
+                setLocked(true)
+            }
         }
-    }, [pw, weekId, toast])
+    }, [pw, weekId, weeks, ask, toast.show]) // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         load()
@@ -759,7 +864,7 @@ function StatsPanel({
                             onChange={(e) => setWeekId(e.target.value)}>
                         {options.map((w) => (
                             <option key={w.id} value={w.id}>
-                                {isBonus(w.kind) ? `【${UNIT[w.kind]}${w.mode === 'group' ? '揪團' : '抖內'}】` : ''}{w.shop || '未命名'}（{formatDay(w.deadline)}截止）
+                                {w.private ? `【${secretName(w.kind)}】` : isBonus(w.kind) ? `【${UNIT[w.kind]}${w.mode === 'group' ? '揪團' : '抖內'}】` : ''}{w.shop || '未命名'}（{formatDay(w.deadline)}截止）
                             </option>
                         ))}
                     </select>
@@ -796,6 +901,12 @@ function StatsPanel({
             {!weekId ? (
                 <div className="card flex flex-col items-center gap-3 text-center">
                     <p>最近一天內沒有團。之前訂過什麼，打開「歷史訂單」看。</p>
+                </div>
+            ) : locked ? (
+                <div className="card flex flex-col items-center gap-3 text-center">
+                    <LockIcon size={64}/>
+                    <p>{secretName(weeks.find((w) => w.id === weekId)?.kind ?? '')}，要通關密碼才看得到訂單。</p>
+                    <button className="btn btn-primary" onClick={load}>輸入通關密碼</button>
                 </div>
             ) : !snap ? (
                 <p className="text-soy-soft">載入中…</p>
@@ -979,7 +1090,8 @@ function HistoryDialog({weeks, current, onPick, onClose}: {
                     <ul className="-mx-2 flex flex-col overflow-y-auto">
                         {list.map((w) => {
                             const n = times.get(`${w.kind}|${w.shop}`) ?? 1
-                            const who = [isBonus(w.kind) && w.host && `${w.host}${w.mode === 'group' ? '揪團' : '請客'}`, w.owner && `負責人 ${w.owner}`].filter(Boolean).join('・')
+                            // 喝飲料不揪不露誰揪、誰負責（後端清單也不給）
+                            const who = !w.private && [isBonus(w.kind) && w.host && `${w.host}${w.mode === 'group' ? '揪團' : '請客'}`, w.owner && `負責人 ${w.owner}`].filter(Boolean).join('・')
                             return (
                                 <li key={w.id}>
                                     <button
@@ -988,7 +1100,7 @@ function HistoryDialog({weeks, current, onPick, onClose}: {
                                     >
                                         <span className="w-[6.6em] shrink-0 font-num whitespace-nowrap text-soy-soft tabular-nums max-md:w-[6.2em] max-md:text-sm">{formatDay(w.deadline)}</span>
                                         <span className={`pill ml-0 shrink-0 border-soy ${KIND_PILL[w.kind]}`}>{UNIT[w.kind]}</span>
-                                        <span className="min-w-0 flex-1 truncate font-bold">{w.shop || '未命名'}</span>
+                                        <span className="min-w-0 flex-1 truncate font-bold">{w.private && <LockIcon size={18} className="mr-1 inline-block align-[-0.12em]"/>}{w.shop || '未命名'}</span>
                                         {n > 1 && <span className="shrink-0 text-sm text-stamp-dark">訂過 {n} 次</span>}
                                         {who && <span className="shrink-0 text-sm text-soy-soft max-md:hidden">{who}</span>}
                                     </button>

@@ -27,6 +27,9 @@ export function drinkType(name: string): 'tea' | 'milk' | null {
 /** 飲料團、點心團：限時、有人開團，抖內或揪團 */
 export const isBonus = (kind: string) => kind === 'drink' || kind === 'snack'
 
+/** 秘密團（Week.private）叫什麼；後端 Code.gs 錯誤訊息一樣 */
+export const secretName = (kind: string) => (kind === 'snack' ? '吃點心不揪' : '喝飲料不揪')
+
 /**
  * 便當截止後點餐頁還顯示「已截止」，到截止那天 17:30（台北）清空；截止時間比 17:30 晚就截止即清空。
  * 後端 Code.gs bentoGone_ 一樣的算法
@@ -38,11 +41,11 @@ export function bentoGone(deadline: string, now = Date.now()) {
   return now >= Math.max(end, clear)
 }
 
-/** 便當是最新一筆便當菜單（過了清空時間就沒有）；飲料團、點心團只在收單中才算（舊資料沒有 kind = 便當） */
+/** 便當是最新一筆便當菜單（過了清空時間就沒有）；飲料團、點心團只在收單中才算，喝飲料不揪不算（舊資料沒有 kind = 便當） */
 export function currentRounds(weeks: Week[], now = Date.now()) {
   const sorted = [...weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const open = (kind: 'drink' | 'snack') => {
-    const w = sorted.find((x) => x.kind === kind)
+    const w = sorted.find((x) => x.kind === kind && !x.private)
     return w && now < new Date(w.deadline).getTime() ? w : null
   }
   const bento = sorted.find((w) => !isBonus(w.kind))
@@ -63,7 +66,8 @@ export function statsPick(weeks: Week[], now = Date.now()) {
   const { drink, snack } = currentRounds(weeks, now)
   const open = [drink, snack].filter((w) => w).sort((a, b) => b!.createdAt.localeCompare(a!.createdAt))[0]
   // 點餐頁的便當 17:30 就清空了，統計還是要看得到
-  const recent = recentRounds(weeks, now).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  // 喝飲料不揪要通關密碼才看得到，不當預設
+  const recent = recentRounds(weeks, now).filter((w) => !w.private).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   return open ?? recent.find((w) => !isBonus(w.kind)) ?? recent[0] ?? null
 }
 
@@ -75,10 +79,10 @@ export function endsEarly(prev: Week | null, deadline: string, now = Date.now())
 
 /**
  * 同一種限時團同時只能有一團收單中，不然新的會把還在收單的那團從點餐頁擠掉。
- * 回傳擋路的那團；存自己那團（改內容、流團）、便當都不算。後端 Code.gs 有一份一樣的檢查。
+ * 回傳擋路的那團；存自己那團（改內容、流團）、便當、喝飲料不揪都不算。後端 Code.gs 有一份一樣的檢查。
  */
-export function openConflict(weeks: Week[], draft: Pick<Week, 'id' | 'kind'>, now = Date.now()) {
-  if (!isBonus(draft.kind)) return null
+export function openConflict(weeks: Week[], draft: Pick<Week, 'id' | 'kind' | 'private'>, now = Date.now()) {
+  if (!isBonus(draft.kind) || draft.private) return null
   const open = currentRounds(weeks, now)[draft.kind as 'drink' | 'snack']
   return open && open.id !== draft.id ? open : null
 }

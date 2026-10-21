@@ -1,10 +1,11 @@
 import {useEffect, useState} from 'react'
 import {api} from '../api'
-import {drinkType, ICE, SUGAR} from '../lib/drink'
+import {drinkType, ICE, secretName, SUGAR} from '../lib/drink'
 import {normName, orderLabel, orderPrice, personLine} from '../lib/stats'
 import type {Order, Snapshot, Week} from '../types'
 import {BobaCup} from './BobaCup'
 import {DrinkWheel} from './DrinkWheel'
+import {LockIcon} from './LockIcon'
 import {ShopLogo} from './ShopLogo'
 import type {useConfirm} from './Confirm'
 import type {useToast} from './Toast'
@@ -59,6 +60,7 @@ export function DrinkBonus({
                                toast,
                                ask,
                                autoOpen = true,
+                               secret,
                            }: {
     bonus: Snapshot & { week: Week }
     /** false：一開始就收成右下角小卡（另一團已經在畫面上，不要兩張廣告疊在一起） */
@@ -68,12 +70,16 @@ export function DrinkBonus({
     onChange: () => Promise<void>
     toast: ReturnType<typeof useToast>
     ask: ReturnType<typeof useConfirm>['ask']
+    /** 喝飲料不揪的通關密碼 */
+    secret?: string
 }) {
     const {week, orders} = bonus
     const drink = week.kind === 'drink'
     const {unit, eat, one, Mascot, icon} = WORDS[drink ? 'drink' : 'snack']
     const group = week.mode === 'group'
     const badge = group ? '限時揪團' : '限時 BONUS'
+    // 喝飲料不揪：徽章前面多一個小鎖頭
+    const lock = (size: number) => week.private && <LockIcon size={size} className="mr-1 inline-block align-[-0.12em]"/>
     const title = group ? `${week.host} 揪團${eat}${unit}！` : `${week.host || '老闆'} 請${eat}${unit}！`
     const size = drink ? '一律 L' : ''
     const mine = name.trim() ? orders.find((o) => normName(o.name) === normName(name)) : undefined
@@ -123,8 +129,9 @@ export function DrinkBonus({
                 itemId,
                 sugar,
                 ice,
-                addonIds: addonId ? [addonId] : []
-            } : {weekId: week.id, name, itemId})
+                addonIds: addonId ? [addonId] : [],
+                secret,
+            } : {weekId: week.id, name, itemId, secret})
             // 點完在畫面中間秀一張收據，不另外跳 toast
             setDone(order)
             setView('done')
@@ -140,7 +147,7 @@ export function DrinkBonus({
         if (!mine || (await ask(`確定不${eat} ${mine.itemName} 了？`, {ok: `不${eat}了`})) === null) return
         setBusy(true)
         try {
-            await api.cancelOrder(week.id, mine.name)
+            await api.cancelOrder(week.id, mine.name, secret)
             toast.show(`${unit}已取消`, 'ok', icon)
             setItemId('')
             await onChange()
@@ -170,7 +177,7 @@ export function DrinkBonus({
             >
                 <Mascot size={72} decorative className="max-md:h-auto max-md:w-[44px]"/>
                 <span className="leading-tight">
-          <span className="block text-[1.05rem] text-stamp">{badge}{mine ? '・已點' : '！'}</span>
+          <span className="block text-[1.05rem] text-stamp">{lock(18)}{badge}{mine ? '・已點' : '！'}</span>
           <span className="font-num text-[2rem] leading-none font-bold tabular-nums max-md:text-[1.4rem]">{clock(left)}</span>
         </span>
             </button>
@@ -179,7 +186,7 @@ export function DrinkBonus({
 
     return (
         <div className="fixed inset-0 z-50 grid place-items-center bg-soy/60 p-4" role="dialog" aria-modal
-             aria-label={`${badge}：${title}`}>
+             aria-label={`${week.private ? secretName(week.kind) + '・' : ''}${badge}：${title}`}>
             {view === 'ad' ? (
                 <div
                     className="relative max-h-[calc(100dvh-32px)] w-full max-w-[540px] animate-pop overflow-y-auto rounded-card border-3 border-soy bg-yolk p-2.5 text-center shadow-pop max-md:max-w-[360px] max-md:p-2">
@@ -188,7 +195,7 @@ export function DrinkBonus({
                         className="flex flex-col items-center gap-4 rounded-[14px] border-3 border-dashed border-soy px-7 pt-8 pb-7 max-md:gap-2.5 max-md:px-4 max-md:pt-6 max-md:pb-4">
                         <div
                             className="-rotate-6 animate-stamp-in rounded-xl border-5 border-stamp bg-rice px-4 py-0.5 font-num text-[2.8rem] font-bold tracking-wide whitespace-nowrap text-stamp max-md:text-[1.8rem]">
-                            {badge}!
+                            {lock(40)}{badge}!
                         </div>
                         <Mascot size={200} className="max-md:h-auto max-md:w-[110px]"/>
                         <h2 className="mb-0 text-[2.4rem] max-md:text-[1.6rem]">{title}</h2>
@@ -234,7 +241,7 @@ export function DrinkBonus({
                         {drink ? <ShopLogo logo={week.imageUrl} shop={week.shop} size={56}/> : <Mascot size={56} decorative/>}
                         <div>
                             <p className="text-sm text-stamp">
-                                {badge}・剩 <span className="font-num font-bold tabular-nums">{clock(left)}</span>
+                                {lock(16)}{badge}・剩 <span className="font-num font-bold tabular-nums">{clock(left)}</span>
                             </p>
                             <h2 className="mb-0 max-md:text-base">{[week.shop, size, group && '各付各的'].filter(Boolean).join('・')}</h2>
                         </div>

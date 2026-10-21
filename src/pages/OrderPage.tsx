@@ -6,6 +6,7 @@ import {Countdown} from '../components/Countdown'
 import {BobaBuddy} from '../components/BobaBuddy'
 import {useConfirm} from '../components/Confirm'
 import {DrinkBonus} from '../components/DrinkBonus'
+import {LockIcon} from '../components/LockIcon'
 import {useToast} from '../components/Toast'
 import {WheelCake} from '../components/WheelCake'
 import {computeStats, normName} from '../lib/stats'
@@ -13,22 +14,27 @@ import {isClosed} from '../lib/time'
 import type {Current, Snapshot} from '../types'
 
 const NAME_KEY = 'dinbendon:name'
+/** 喝飲料不揪的通關密碼，對過一次就記在這台電腦 */
+const secretKey = (id: string) => `dinbendon:secret:${id}`
 
-function rememberName(name: string) {
+function keep(key: string, value: string) {
     try {
-        localStorage.setItem(NAME_KEY, name.trim())
+        localStorage.setItem(key, value)
     } catch {
         /* ignore */
     }
 }
 
-function readName() {
+function readKept(key: string) {
     try {
-        return localStorage.getItem(NAME_KEY) ?? ''
+        return localStorage.getItem(key) ?? ''
     } catch {
         return ''
     }
 }
+
+const rememberName = (name: string) => keep(NAME_KEY, name.trim())
+const readName = () => readKept(NAME_KEY)
 
 export function OrderPage() {
     const [snap, setSnap] = useState<Current | null>(null)
@@ -41,15 +47,41 @@ export function OrderPage() {
     const [, forceTick] = useState(0)
     const toast = useToast()
     const {ask, node: confirmNode} = useConfirm()
+    // 喝飲料不揪：專屬連結 #/r/<id> 進來，通關密碼對了才看得到
+    const privId = window.location.hash.match(/^#\/r\/(\w+)/)?.[1] ?? ''
+    const [secret, setSecret] = useState(() => (privId ? readKept(secretKey(privId)) : ''))
+    const [priv, setPriv] = useState<Snapshot | null>(null)
 
     const refresh = useCallback(async () => {
+        // 密碼是對過才記的，抓失敗就當這次沒有
+        if (privId && secret) api.getRound(privId, secret).then(setPriv, () => setPriv(null))
         try {
             setSnap(await api.getCurrent())
             setLoadError('')
         } catch (e) {
             setLoadError((e as Error).message)
         }
-    }, [])
+    }, [privId, secret])
+
+    // 還沒輸入過通關密碼就問；錯了再問，按取消就算了
+    useEffect(() => {
+        if (!privId || secret) return
+        ;(async () => {
+            for (;;) {
+                const v = await ask('喝飲料、吃點心不揪？\n輸入通關密碼才看得到', {ok: '進去', password: true, label: '通關密碼', icon: <LockIcon size={56}/>})
+                if (v === null) return
+                try {
+                    const round = await api.getRound(privId, v.trim())
+                    if (round.week && isClosed(round.week.deadline)) toast.show('這團已經截止囉', 'error')
+                    keep(secretKey(privId), v.trim())
+                    setPriv(round)
+                    return setSecret(v.trim())
+                } catch (e) {
+                    toast.show((e as Error).message, 'error')
+                }
+            }
+        })()
+    }, [privId, secret]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // 進來載一次、每 30 秒、切回分頁時再抓，名單會跟著更新
     useEffect(() => {
@@ -114,11 +146,12 @@ export function OrderPage() {
     }
 
     // 飲料團、點心團：收單中才有，跟便當各點各的
-    const bonus = (round: Snapshot | null | undefined, autoOpen = true) =>
+    const bonus = (round: Snapshot | null | undefined, autoOpen = true, secret?: string) =>
         round?.week && (
             <DrinkBonus
                 key={round.week.id}
                 autoOpen={autoOpen}
+                secret={secret}
                 bonus={{week: round.week, orders: round.orders}}
                 name={name}
                 setName={setName}
@@ -130,14 +163,16 @@ export function OrderPage() {
                 }}
             />
         )
-    // 有點心團時右下角一定疊兩個（點心小卡＋飲料小卡或珍奶）
-    const stacked = !!snap?.snack
+    const privOpen = priv?.week && !isClosed(priv.week.deadline) ? priv : null
+    // 有點心團、喝飲料不揪時右下角一定疊兩個以上（＋飲料小卡或珍奶）
+    const stacked = !!snap?.snack || !!privOpen
     // 右下角：收起來的倒數小卡上下疊；沒有飲料團時放珍奶
     const drink = (
         <div className="fixed right-5 bottom-5 z-40 flex flex-col items-end gap-3 max-md:right-3 max-md:bottom-3">
-            {/* 有飲料團時點心團先收著，不然廣告會疊在一起、或蓋住填到一半的飲料單 */}
-            {bonus(snap?.snack, !snap?.drink)}
-            {bonus(snap?.drink) || <BobaBuddy/>}
+            {/* 專屬連結進來的喝飲料不揪先彈；有飲料團時點心團先收著，不然廣告會疊在一起、或蓋住填到一半的飲料單 */}
+            {bonus(privOpen, true, secret)}
+            {bonus(snap?.snack, !snap?.drink && !privOpen)}
+            {bonus(snap?.drink, !privOpen) || <BobaBuddy/>}
         </div>
     )
 

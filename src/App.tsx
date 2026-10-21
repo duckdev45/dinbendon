@@ -22,7 +22,8 @@ export function App() {
           {route === 'order' ? <a href="#/admin">訂單管理</a> : <a href="#/">回點餐頁</a>}
         </nav>
       </header>
-      {route === 'admin' ? <AdminPage /> : <OrderPage />}
+      {/* 換了喝飲料不揪連結（#/r/<id>）就整頁重來 */}
+      {route === 'admin' ? <AdminPage /> : <OrderPage key={window.location.hash} />}
     </div>
   )
 }

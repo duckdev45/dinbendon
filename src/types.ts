@@ -29,6 +29,8 @@ export interface Week {
   owner?: string
   /** 開團時有設密碼（刪訂單、提早結束要輸入）；密碼本身不會傳到前端。舊團沒有 */
   hasPassword?: boolean
+  /** 飲料團、點心團的喝飲料不揪：點餐頁不顯示，要專屬連結 #/r/<id>＋通關密碼才看得到；開團後不能改 */
+  private?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -67,6 +69,8 @@ export interface PlaceOrderInput {
   sugar?: string
   ice?: string
   addonIds?: string[]
+  /** 喝飲料不揪的通關密碼 */
+  secret?: string
 }
 
 /** 常用店家：開團時選了整份帶入；品項存 [名稱, 單價] */
@@ -90,14 +94,17 @@ export interface Api {
   mode: 'gas' | 'demo'
   getCurrent(): Promise<Current>
   placeOrder(input: PlaceOrderInput): Promise<Order>
-  cancelOrder(weekId: string, name: string): Promise<void>
+  cancelOrder(weekId: string, name: string, secret?: string): Promise<void>
+  /** 喝飲料不揪：通關密碼對了才回傳那團 */
+  getRound(weekId: string, secret: string): Promise<Snapshot>
   admin: {
     verify(password: string): Promise<void>
     /** 順便帶最新一團的訂單和常用店家，省往返；舊版 Code.gs 沒有 shops */
     listWeeks(password: string): Promise<{ weeks: Week[]; latest: Snapshot; shops?: ShopRow[] }>
-    getWeek(password: string, weekId: string): Promise<Snapshot>
-    /** roundPassword：開新團時設定；提早結束（endsEarly）時驗證 */
-    saveWeek(password: string, week: WeekDraft, roundPassword?: string): Promise<Week>
+    /** 喝飲料不揪要帶通關密碼 */
+    getWeek(password: string, weekId: string, secret?: string): Promise<Snapshot>
+    /** roundPassword：開新團時設定；提早結束（endsEarly）時驗證。secret：開喝飲料不揪時設定的通關密碼 */
+    saveWeek(password: string, week: WeekDraft, roundPassword?: string, secret?: string): Promise<Week>
     uploadImage(password: string, dataUrl: string, filename: string): Promise<string>
     /** 那團有設開團密碼就要帶 */
     deleteOrder(password: string, orderId: string, roundPassword?: string): Promise<void>

@@ -1,7 +1,7 @@
 import type { Api, Order, ShopRow, Snapshot, Week } from '../types'
 import { defaultDeadline, isClosed } from '../lib/time'
 import { normName } from '../lib/stats'
-import { currentRounds, drinkOptions, endsEarly, openConflict } from '../lib/drink'
+import { currentRounds, drinkOptions, endsEarly, openConflict, secretName, statsPick } from '../lib/drink'
 import { uid } from '../lib/image'
 
 /**
@@ -17,6 +17,13 @@ interface Db {
   shops?: ShopRow[]
   /** 開團密碼，跟 week 分開放，不會跟著菜單傳出去 */
   passwords?: Record<string, string>
+  /** 喝飲料不揪的通關密碼，一樣分開放 */
+  secrets?: Record<string, string>
+}
+
+function checkSecret(db: Db, weekId: string, input = '') {
+  const s = db.secrets?.[weekId]
+  if (s && s !== input.trim()) throw new Error('通關密碼不對，問一下揪你的人')
 }
 
 function checkPassword(db: Db, weekId: string, input = '') {
@@ -60,11 +67,20 @@ export function createDemoApi(): Api {
       const { bento, drink, snack } = currentRounds(db.weeks)
       return { ...snapshot(db, bento), drink: drink ? snapshot(db, drink) : null, snack: snack ? snapshot(db, snack) : null }
     },
+    async getRound(weekId, secret) {
+      await wait()
+      const db = load()
+      const week = db.weeks.find((w) => w.id === weekId)
+      if (!week) throw new Error('找不到這團，連結是不是貼錯了')
+      checkSecret(db, weekId, secret)
+      return snapshot(db, week)
+    },
     async placeOrder(input) {
       await wait(400)
       const db = load()
       const week = db.weeks.find((w) => w.id === input.weekId)
       if (!week) throw new Error('找不到這週的菜單，重新整理看看')
+      checkSecret(db, week.id, input.secret)
       if (isClosed(week.deadline)) throw new Error('已經截止囉，下週請早')
       const item = week.items.find((i) => i.id === input.itemId)
       if (!item) throw new Error('這個便當已經被負責人拿掉了，重新整理再選一次')
@@ -87,9 +103,10 @@ export function createDemoApi(): Api {
       save(db)
       return order
     },
-    async cancelOrder(weekId, name) {
+    async cancelOrder(weekId, name, secret) {
       await wait()
       const db = load()
+      checkSecret(db, weekId, secret)
       const week = db.weeks.find((w) => w.id === weekId)
       if (week && isClosed(week.deadline)) throw new Error('已經截止，不能取消了，請直接找負責人')
       db.orders = db.orders.filter((o) => !(o.weekId === weekId && normName(o.name) === normName(name)))
@@ -102,15 +119,19 @@ export function createDemoApi(): Api {
       async listWeeks(_pw) {
         await wait()
         const db = load()
-        const weeks = [...db.weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        return { weeks, latest: snapshot(db, weeks[0] ?? null), shops: db.shops ?? [] }
+        // 喝飲料不揪不露誰揪、誰負責，跟後端一樣
+        const weeks = [...db.weeks]
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .map((w) => (w.private ? { ...w, host: '', owner: '' } : w))
+        return { weeks, latest: snapshot(db, statsPick(weeks)), shops: db.shops ?? [] }
       },
-      async getWeek(_pw, weekId) {
+      async getWeek(_pw, weekId, secret) {
         await wait()
         const db = load()
+        checkSecret(db, weekId, secret)
         return snapshot(db, db.weeks.find((w) => w.id === weekId) ?? null)
       },
-      async saveWeek(_pw, draft, roundPassword = '') {
+      async saveWeek(_pw, draft, roundPassword = '', secret = '') {
         await wait(400)
         const db = load()
         const now = new Date().toISOString()
@@ -120,7 +141,11 @@ export function createDemoApi(): Api {
         if (busy) throw new Error(`${busy.host || '有人'} 已經開了${busy.kind === 'drink' ? '飲料' : '點心'}團，重新整理看看`)
         if (prev && prev.shop !== draft.shop && db.orders.some((o) => o.weekId === draft.id)) throw new Error('已經有人點了，不能換店家')
         if (!prev && roundPassword.trim()) db.passwords = { ...db.passwords, [draft.id]: roundPassword.trim() }
-        const week: Week = { ...draft, owner: prev ? prev.owner : draft.owner?.trim(), hasPassword: !!db.passwords?.[draft.id], createdAt: prev?.createdAt ?? now, updatedAt: now }
+        if (!prev && draft.private && draft.kind !== 'bento') {
+          if (!secret.trim()) throw new Error(`${secretName(draft.kind)}要設通關密碼`)
+          db.secrets = { ...db.secrets, [draft.id]: secret.trim() }
+        }
+        const week: Week = { ...draft, owner: prev ? prev.owner : draft.owner?.trim(), hasPassword: !!db.passwords?.[draft.id], private: !!db.secrets?.[draft.id], createdAt: prev?.createdAt ?? now, updatedAt: now }
         db.weeks = prev ? db.weeks.map((w) => (w.id === week.id ? week : w)) : [...db.weeks, week]
         save(db)
         return week

@@ -86,3 +86,13 @@ test('訂單統計下拉：截止超過一天的團拿掉，到歷史訂單看',
   assert.deepEqual(recentRounds([snack, bento], tpe('2026-10-24T13:01')), [])
   assert.equal(statsPick([snack, bento], tpe('2026-10-24T13:01')), null)
 })
+
+test('私人小團：點餐頁、統計預設都不算，也不擋公開的團', () => {
+  const now = new Date(snack.createdAt).getTime() + 60_000
+  const secret = { ...snack, id: 'p1', private: true, createdAt: new Date(now).toISOString() } as Week
+  assert.equal(currentRounds([secret, snack, bento], now).snack, snack)
+  assert.equal(currentRounds([secret, bento], now).snack, null)
+  assert.equal(openConflict([secret, bento], { id: 'p2', kind: 'snack' }, now), null)
+  assert.equal(openConflict([snack, bento], { id: 'p2', kind: 'snack', private: true }, now), null)
+  assert.notEqual(statsPick([secret, bento], now)?.id, 'p1')
+})

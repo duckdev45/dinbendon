@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
 
-type Ask = { text: string; ok: string; password: boolean; hint: string; resolve: (v: string | null) => void }
+type Ask = { text: string; ok: string; password: boolean; label: string; hint: string; icon: ReactNode; resolve: (v: string | null) => void }
 
 /**
  * 取代 window.confirm 的確認卡片，跟成功 toast 同一個樣子。
@@ -10,10 +10,10 @@ export function useConfirm() {
   const [req, setReq] = useState<Ask | null>(null)
   const [pw, setPw] = useState('')
   const ask = useCallback(
-    (text: string, { ok = '確定', password = false, hint = '' }: { ok?: string; password?: boolean; hint?: string } = {}) =>
+    (text: string, { ok = '確定', password = false, label = '開團密碼', hint = '', icon = null }: { ok?: string; password?: boolean; label?: string; hint?: string; icon?: ReactNode } = {}) =>
       new Promise<string | null>((resolve) => {
         setPw('')
-        setReq({ text, ok, password, hint, resolve })
+        setReq({ text, ok, password, label, hint, icon, resolve })
       }),
     [],
   )
@@ -33,10 +33,11 @@ export function useConfirm() {
           if (!req.password || pw.trim()) close(pw)
         }}
       >
+        {req.icon && <div className="-mb-2 flex justify-center">{req.icon}</div>}
         <p className="text-[1.2rem] whitespace-pre-line">{req.text}</p>
         {req.password && (
           <label className="field text-left">
-            <span className="field-label req">開團密碼</span>
+            <span className="field-label req">{req.label}</span>
             <input value={pw} onChange={(e) => setPw(e.target.value)} autoFocus autoComplete="off" placeholder="開團時設定的那組" />
             {req.hint && <span className="text-sm text-stamp-dark">{req.hint}</span>}
           </label>
