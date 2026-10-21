@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DRINK_SHOPS, SHOPS, presets } from '../src/shops.ts'
+import { presets } from '../src/shops.ts'
 import type { ShopRow, Week } from '../src/types.ts'
 
 const week = (p: Partial<Week>) =>
@@ -17,18 +17,27 @@ test('開過的團自動變常用店家：同一家取最後一次的菜單', ()
   assert.equal(presets('snack', [week({ shop: '巷口車輪餅 ' }), older], []).length, 1)
 })
 
-test('內建店家照舊在；手動維護過的、開團改過價錢的，以比較新的為準', () => {
-  assert.equal(presets('bento', [], []).length, SHOPS.length)
-  assert.equal(presets('drink', [], [])[0].imageUrl, DRINK_SHOPS[0].logo)
+// 原本寫死的內建店家匯入 shops 表時 updatedAt 是 1970（最舊）
+const OLD = '1970-01-01T00:00:00.000Z'
+const seeded = [
+  row({ kind: 'bento', shop: '山水美食坊', items: [['排骨飯', 100]], updatedAt: OLD }),
+  row({ kind: 'bento', shop: '米香手作便當', items: [['滷雞腿', 105]], updatedAt: OLD }),
+  row({ kind: 'drink', shop: '得正', items: [['紅茶', 30]], updatedAt: OLD }),
+]
+
+test('匯入的內建店家照表上順序；手動維護過的、開團改過價錢的，以比較新的為準', () => {
+  assert.deepEqual(presets('bento', [], seeded).map((p) => p.shop), ['山水美食坊', '米香手作便當'])
+  assert.equal(presets('drink', [], seeded)[0].shop, '得正')
   assert.deepEqual(presets('snack', [week({})], [row({})])[0].items, [['奶油', 20]])
   assert.deepEqual(presets('snack', [week({ updatedAt: '2026-10-21T09:00:00.000Z' })], [row({})])[0].items, [['紅豆', 15]])
-  const s = SHOPS[0].shop
-  assert.deepEqual(presets('bento', [], [row({ kind: 'bento', shop: s })]).find((p) => p.shop === s)!.items, [['奶油', 20]])
+  // 開過的團比匯入的內建店家新
+  const s = seeded.find((p) => p.kind === 'bento')!
+  assert.deepEqual(presets('bento', [week({ kind: 'bento', shop: s.shop })], seeded).find((p) => p.shop === s.shop)!.items, [['紅豆', 15]])
 })
 
 test('刪掉的常用店家不出現，之後又用同一家開團就回來', () => {
-  const s = SHOPS[0].shop
-  assert.equal(presets('bento', [], [row({ kind: 'bento', shop: s, hidden: true })]).some((p) => p.shop === s), false)
+  const s = seeded[0].shop
+  assert.equal(presets('bento', [], [...seeded.filter((p) => p.shop !== s), row({ kind: 'bento', shop: s, hidden: true })]).some((p) => p.shop === s), false)
   assert.equal(presets('snack', [week({})], [row({ hidden: true })]).length, 0)
   assert.equal(presets('snack', [week({ updatedAt: '2026-10-21T09:00:00.000Z' })], [row({ hidden: true })]).length, 1)
 })

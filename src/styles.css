@@ -204,6 +204,18 @@
   .field-label {
     @apply text-md;
   }
+  /* 必填：標題後面加紅色 *，送出時一樣會擋 */
+  .req::after {
+    content: '*';
+    position: relative;
+    top: 0.3em;
+    margin-left: 0.1em;
+    font-family: var(--font-num);
+    font-size: 2em;
+    font-weight: 700;
+    line-height: 0;
+    color: var(--color-stamp);
+  }
 
   .btn {
     @apply inline-flex cursor-pointer items-center justify-center gap-2.5 rounded-full border-3 border-soy bg-rice px-[18px] py-[9px] text-soy no-underline shadow-pop-sm transition-[translate,box-shadow] duration-100 not-disabled:hover:-translate-px not-disabled:hover:shadow-pop-md not-disabled:active:translate-[3px] not-disabled:active:shadow-none disabled:cursor-not-allowed disabled:opacity-55;

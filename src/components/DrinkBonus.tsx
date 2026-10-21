@@ -249,7 +249,7 @@ export function DrinkBonus({
                     )}
 
                     <label className="field">
-                        <span className="field-label">你的名字</span>
+                        <span className="field-label req">你的名字</span>
                         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20}
                                autoComplete="name"/>
                     </label>
@@ -268,7 +268,7 @@ export function DrinkBonus({
 
                     <fieldset className="field">
                         <legend className="field-label mb-2 flex w-full items-center justify-between">
-                            選{unit}
+                            <span className="req">選{unit}</span>
                             {canSpin && (
                                 <button
                                     type="button"
@@ -304,7 +304,7 @@ export function DrinkBonus({
                         ] as const
                     ).map(([label, list, value, setValue]) => (
                         <fieldset key={label} className="field">
-                            <legend className="field-label">{label}</legend>
+                            <legend className="field-label req">{label}</legend>
                             <div className="flex flex-wrap gap-2" role="radiogroup">
                                 {list.map((v) => (
                                     <label key={v} className={CHIP}>

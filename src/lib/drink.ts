@@ -53,13 +53,18 @@ export function currentRounds(weeks: Week[], now = Date.now()) {
   }
 }
 
-/** 訂單統計預設看哪團：收單中的飲料、點心團（最新的）優先，不然這週便當。後端 adminListWeeks 的 latest 一樣挑法 */
+/** 訂單統計的下拉只放還在收單、或截止不到一天的團；更早的到「歷史訂單」看 */
+export function recentRounds(weeks: Week[], now = Date.now()) {
+  return weeks.filter((w) => now < new Date(w.deadline).getTime() + 86400_000)
+}
+
+/** 訂單統計預設看哪團：收單中的飲料、點心團（最新的）優先，不然最近的便當；都超過一天就沒有。後端 adminListWeeks 的 latest 一樣挑法 */
 export function statsPick(weeks: Week[], now = Date.now()) {
   const { drink, snack } = currentRounds(weeks, now)
   const open = [drink, snack].filter((w) => w).sort((a, b) => b!.createdAt.localeCompare(a!.createdAt))[0]
-  // 便當清空了統計還是要看得到上一週
-  const bento = [...weeks].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).find((w) => !isBonus(w.kind))
-  return open ?? bento ?? weeks[0] ?? null
+  // 點餐頁的便當 17:30 就清空了，統計還是要看得到
+  const recent = recentRounds(weeks, now).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return open ?? recent.find((w) => !isBonus(w.kind)) ?? recent[0] ?? null
 }
 
 /** 存檔會不會讓還在收單的團提早結束（流團、把截止時間改到現在以前）；有設開團密碼的才要擋。後端 adminSaveWeek 一樣的判斷 */

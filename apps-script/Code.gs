@@ -119,8 +119,10 @@ var ACTIONS = {
   // 預設那團：收單中的飲料、點心團優先，不然這週便當（跟前端 src/lib/drink.ts statsPick 一樣）
   adminListWeeks: function (p) {
     var weeks = allWeeks_();
-    var open = weeks.filter(function (w) { return w.kind !== 'bento' && Date.now() < new Date(w.deadline).getTime(); })[0];
-    var pick = open || weeks.filter(function (w) { return w.kind === 'bento'; })[0] || weeks[0] || null;
+    // 截止超過一天的不算（前端下拉也拿掉，到「歷史訂單」看）
+    var recent = weeks.filter(function (w) { return Date.now() < new Date(w.deadline).getTime() + 86400000; });
+    var open = recent.filter(function (w) { return w.kind !== 'bento' && Date.now() < new Date(w.deadline).getTime(); })[0];
+    var pick = open || recent.filter(function (w) { return w.kind === 'bento'; })[0] || recent[0] || null;
     return { weeks: weeks, latest: snapshot_(pick), shops: allShops_() };
   },
 
@@ -199,11 +201,6 @@ var ACTIONS = {
         writeRow_(sheet, SHOP_COLS, row, hit >= 0 ? hit + 2 : null);
         if (hit < 0) rows.push(row);
       };
-      var pairs = function (list) {
-        return JSON.stringify((list || [])
-          .map(function (x) { return [String(x[0] || '').trim(), Math.max(0, Math.round(Number(x[1]) || 0))]; })
-          .filter(function (x) { return x[0]; }));
-      };
       var from = String(p.from || '').trim().slice(0, 40);
       // 改名不能改成另一家已經有的名字，不然會蓋掉那家的菜單
       if (from && from !== name && rows.some(function (r) { return r.kind === s.kind && r.shop === name && r.hidden !== '1'; })) {
@@ -211,8 +208,8 @@ var ACTIONS = {
       }
       if (from && from !== name) put({ kind: s.kind, shop: from, imageUrl: '', items: '[]', addons: '[]', hidden: '1', updatedAt: now });
       put({
-        kind: s.kind, shop: name, imageUrl: String(s.imageUrl || ''), items: pairs(s.items),
-        addons: pairs(s.kind === 'drink' ? s.addons : []), hidden: s.hidden ? '1' : '', updatedAt: now,
+        kind: s.kind, shop: name, imageUrl: String(s.imageUrl || ''), items: pairs_(s.items),
+        addons: pairs_(s.kind === 'drink' ? s.addons : []), hidden: s.hidden ? '1' : '', updatedAt: now,
       });
       return allShops_();
     });
@@ -270,6 +267,13 @@ function allShops_() {
       hidden: r.hidden === '1', updatedAt: r.updatedAt,
     };
   });
+}
+
+// 品項 [名稱, 單價]：去掉空白名稱，單價取整數、不能負的
+function pairs_(list) {
+  return JSON.stringify((list || [])
+    .map(function (x) { return [String(x[0] || '').trim(), Math.max(0, Math.round(Number(x[1]) || 0))]; })
+    .filter(function (x) { return x[0]; }));
 }
 
 function findWeek_(id) {

@@ -9,12 +9,13 @@
 
 ## 不做
 - 開團存檔（adminSaveWeek）不寫 shops 表：開過的團由前端從 weeks 算，存團的路徑完全不動。
-- 不把內建清單（src/shops.ts）搬進試算表：內建的當預設，改過或刪掉才寫一列。
+- 圖片不搬 Drive：照片、logo 留在 public/（Vercel CDN），舊週次存的是 menus/xxx.jpg 路徑。
 
 ## 資料
 - 新工作表 `shops`：kind, shop, imageUrl, items, addons, hidden, updatedAt；一種團一家一列，第一次用到自動建立。
-- 同一家取最新：內建（最舊）< 開過的團（updatedAt）< shops 表（updatedAt）。
-- 新動作 `adminSaveShop`；`adminListWeeks` 多回 `shops`，不多一次往返。舊版 Code.gs 沒有 shops 時只顯示內建＋開過的團。
+- 同一家取最新：匯入的內建店家（updatedAt = 1970，最舊）< 開過的團／手動維護（updatedAt）。
+- 內建店家已搬進 shops 表（2026-10-21 正式環境匯入），程式裡的寫死清單、匯入按鈕、`adminImportShops` 都已刪掉；要找原始資料看 git 歷史的 `src/shops.ts`。
+- 新動作 `adminSaveShop`；`adminListWeeks` 多回 `shops`，不多一次往返。舊版 Code.gs 沒有 shops 時只顯示開過的團（飲料拉霸沒店可抽時改顯示提示）。
 
 ## 驗證
 - `pnpm test`：`test/shops.test.ts`。

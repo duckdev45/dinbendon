@@ -31,6 +31,21 @@ export function orderLabel(o: Order): string {
   return o.options ? `${o.itemName} ${o.options}` : o.itemName
 }
 
+/**
+ * 印出來的領取表（Excel 第一張）：飲料是 姓名／飲料／其他備註（甜度冰量加料），便當、點心只有 姓名／品項；
+ * 揪團多一欄要付的錢。依姓名排序，找自己最快
+ */
+export function pickupTable(week: Week, orders: Order[]) {
+  const unit = week.kind === 'drink' ? '飲料' : week.kind === 'snack' ? '點心' : '便當'
+  const drink = week.kind === 'drink'
+  const group = week.kind !== 'bento' && week.mode === 'group'
+  const head = ['姓名', unit, ...(drink ? ['其他備註'] : []), ...(group ? ['要付'] : [])]
+  const rows = [...orders]
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
+    .map((o): (string | number)[] => [o.name, o.itemName, ...(drink ? [o.options] : []), ...(group ? [orderPrice(week, o)] : [])])
+  return { head, rows }
+}
+
 /** 「鴨子 奶茶 無糖 少冰 +珍珠」：發飲料、核對用 */
 export function personLine(o: Order): string {
   return `${o.name} ${orderLabel(o)}`

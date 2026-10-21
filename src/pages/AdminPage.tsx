@@ -6,7 +6,7 @@ import {useToast} from '../components/Toast'
 import {exportExcel} from '../lib/excel'
 import {shrinkImage, uid} from '../lib/image'
 import {MAX_PRICE, presets} from '../shops'
-import {currentRounds, endsEarly, isBonus, statsPick} from '../lib/drink'
+import {currentRounds, endsEarly, isBonus, recentRounds, statsPick} from '../lib/drink'
 import {computeStats, drinkSummary, orderLabel, orderPrice, shopText} from '../lib/stats'
 import {
     defaultDeadline,
@@ -46,16 +46,17 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
     const kind: RoundKind = tab === 'drink' || tab === 'snack' ? tab : 'bento'
     const [weeks, setWeeks] = useState<Week[] | null>(null)
     const [latest, setLatest] = useState<Snapshot | null>(null)
-    const [shopRows, setShopRows] = useState<ShopRow[]>([])
+    // null = 舊版 Code.gs 沒有 shops 表
+    const [shopRows, setShopRows] = useState<ShopRow[] | null>(null)
     const {ask, node: confirmNode} = useConfirm()
-    const shops = useMemo(() => presets(kind, weeks ?? [], shopRows), [kind, weeks, shopRows])
+    const shops = useMemo(() => presets(kind, weeks ?? [], shopRows ?? []), [kind, weeks, shopRows])
 
     const loadWeeks = useCallback(async () => {
         try {
             const {weeks: list, latest, shops} = await api.admin.listWeeks(pw)
             setWeeks(list)
             setLatest(latest)
-            setShopRows(shops ?? [])
+            setShopRows(shops ?? null)
             if (list.length === 0) setTab((t) => (t === 'stats' ? 'menu' : t))
         } catch (e) {
             toast.show((e as Error).message, 'error')
@@ -252,13 +253,17 @@ function MenuEditor({
     async function save() {
         const tidy = (list: MenuItem[]) => list.map((it) => ({...it, name: it.name.trim()})).filter((it) => it.name)
         const items = tidy(draft.items)
+        // 必填（標題有 *）照畫面由上到下檢查
         if (bonus && !draft.host.trim()) return toast.show(draft.mode === 'group' ? '填一下誰揪的團' : '填一下誰請客', 'error')
-        if (isNew && !draft.owner?.trim()) return toast.show('填一下負責人，有問題大家才知道要找誰', 'error')
         if (!draft.shop.trim()) return toast.show(drink ? '先拉一下拉霸，抽今天喝哪家' : '填一下店家名稱', 'error')
+        const end = new Date(draft.deadline).getTime()
+        if (Number.isNaN(end)) return toast.show('選一下截止時間', 'error')
+        if (isNew && end <= Date.now()) return toast.show('截止時間已經過了，改晚一點再開團', 'error')
+        if (isNew && !draft.owner?.trim()) return toast.show('填一下負責人，有問題大家才知道要找誰', 'error')
+        if (isNew && !roundPw.trim()) return toast.show('設一組開團密碼，刪訂單、提早結束要用', 'error')
         if (items.length === 0) return toast.show(`至少要有一種${unit}`, 'error')
         const over = bonus ? [] : items.filter((it) => it.price > MAX_PRICE)
         if (over.length) return toast.show(`便當不能超過 $${MAX_PRICE}：${over.map((it) => it.name).join('、')}`, 'error')
-        if (isNew && !roundPw.trim()) return toast.show('設一組開團密碼，刪訂單、提早結束要用', 'error')
         // 把截止時間改到現在以前＝提早結束，一樣要密碼
         let input = roundPw
         if (!isNew && endsEarly(current, draft.deadline)) {
@@ -295,7 +300,7 @@ function MenuEditor({
                     // 誰請客／誰揪的＋抖內（請大家喝）還是揪團（各付各的）；負責人可能是別人，在下面跟密碼一起填
                     <div className="flex flex-wrap items-end gap-3">
                         <label className="field w-48">
-                            <span className="field-label">{draft.mode === 'group' ? '誰揪的團' : '誰請客'}</span>
+                            <span className="field-label req">{draft.mode === 'group' ? '誰揪的團' : '誰請客'}</span>
                             <input value={draft.host} onChange={(e) => set('host', e.target.value)} maxLength={20}/>
                         </label>
                         <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm" role="radiogroup" aria-label="抖內還是揪團">
@@ -359,10 +364,14 @@ function MenuEditor({
                 )}
 
                 <section className={`card flex flex-col gap-3.5 ${drink ? 'col-span-full' : ''}`}>
-                    <h2 className="mb-0">{drink ? '今天喝哪家？' : bonus ? '今天吃哪家？' : '基本資料'}</h2>
+                    <h2 className="mb-0">{drink ? <span className="req">今天喝哪家？</span> : bonus ? '今天吃哪家？' : '基本資料'}</h2>
                     {drink ? (
                         // 飲料店只能拉霸抽，開團後就不能換
-                        <SlotMachine shops={shops.map((s) => ({shop: s.shop, logo: s.imageUrl}))} value={draft.shop} onPick={pickShop} locked={!isNew}/>
+                        shops.length ? (
+                            <SlotMachine shops={shops.map((s) => ({shop: s.shop, logo: s.imageUrl}))} value={draft.shop} onPick={pickShop} locked={!isNew}/>
+                        ) : (
+                            <p className="text-soy-soft">還沒有飲料店可以抽，先到下面「常用飲料店家」新增一家。</p>
+                        )
                     ) : (
                     <>
                     {shops.length > 0 && (
@@ -378,7 +387,7 @@ function MenuEditor({
                     </label>
                     )}
                     <label className="field">
-                        <span className="field-label">店家名稱</span>
+                        <span className="field-label req">店家名稱</span>
                         <input value={draft.shop} onChange={(e) => set('shop', e.target.value)}
                                placeholder={bonus ? '例如：巷口車輪餅' : '例如：阿嬤灶腳便當'} disabled={shopLocked}/>
                         {shopLocked && <span className="text-sm text-stamp-dark">已經有 {ordered} 人點了，不能換店家；要換請{bonus ? '先流團再開新的一團' : '「開新的一週」'}。</span>}
@@ -386,7 +395,7 @@ function MenuEditor({
                     </>
                     )}
                     <label className="field">
-                        <span className="field-label">截止時間</span>
+                        <span className="field-label req">截止時間</span>
                         <input
                             type="datetime-local"
                             value={toLocalInput(draft.deadline)}
@@ -413,11 +422,11 @@ function MenuEditor({
                         <div className="flex flex-col gap-1.5">
                             <div className="grid grid-cols-2 gap-3">
                                 <label className="field">
-                                    <span className="field-label">負責人</span>
+                                    <span className="field-label req">負責人</span>
                                     <input value={draft.owner ?? ''} onChange={(e) => set('owner', e.target.value)} maxLength={20}/>
                                 </label>
                                 <label className="field">
-                                    <span className="field-label">開團密碼</span>
+                                    <span className="field-label req">開團密碼</span>
                                     <input value={roundPw} onChange={(e) => setRoundPw(e.target.value)} autoComplete="off" maxLength={40} placeholder="負責人記得就好"/>
                                 </label>
                             </div>
@@ -428,7 +437,7 @@ function MenuEditor({
 
                 <section className="card col-span-full flex flex-col gap-3.5">
                     <div className="flex items-baseline justify-between">
-                        <h2 className="mb-0">{unit}種類{drink && <span className="ml-2 text-sm font-normal text-soy-soft">一律 L，填 L 的價錢</span>}</h2>
+                        <h2 className="mb-0"><span className="req">{unit}種類</span>{drink && <span className="ml-2 text-sm font-normal text-soy-soft">一律 L，填 L 的價錢</span>}</h2>
                         {!drink && (
                             // 點心沒有內建菜單，貼一串最快
                             <button className="link-btn" onClick={() => setBulkOpen((o) => !o)}>
@@ -545,11 +554,12 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
                 <h2 className="mb-0">常用{unit}店家<span className="ml-2 text-sm font-normal text-soy-soft">開過的團會自動加進來</span></h2>
                 {!edit && <button className="link-btn" onClick={() => open()}>+ 新增店家</button>}
             </div>
+
             {edit ? (
                 <div className="flex flex-col gap-3.5">
                     <div className="flex flex-wrap items-end gap-4">
                         <label className="field min-w-0 flex-1">
-                            <span className="field-label">店家名稱</span>
+                            <span className="field-label req">店家名稱</span>
                             <input value={edit.shop} onChange={(e) => set('shop', e.target.value)} maxLength={40}/>
                         </label>
                         <div className="flex items-center gap-3">
@@ -561,6 +571,7 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
                             <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickFile(e.target.files?.[0])}/>
                         </div>
                     </div>
+                    <h3 className="mb-0"><span className="req">{unit}種類</span></h3>
                     <ItemRows list={edit.items} onChange={(v) => set('items', v)} unit={unit} max={kind === 'bento' ? MAX_PRICE : undefined}/>
                     {drink && (
                         <>
@@ -666,6 +677,13 @@ function StatsPanel({
     // 舊版 Code.gs 回的是最新一團，跟預設不同團就不要先顯示
     const [snap, setSnap] = useState<Snapshot | null>(initial?.week?.id === weekId ? initial : null)
     const [exporting, setExporting] = useState(false)
+    const [history, setHistory] = useState(false)
+    // 下拉只放最近的團（截止不到一天）；從歷史訂單點進來的舊團也放進去，才選得到
+    const options = useMemo(() => {
+        const recent = recentRounds(weeks)
+        const picked = weeks.find((w) => w.id === weekId)
+        return picked && !recent.includes(picked) ? [...recent, picked] : recent
+    }, [weeks, weekId])
 
     const load = useCallback(async () => {
         if (!weekId) return
@@ -734,17 +752,22 @@ function StatsPanel({
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-wrap items-center gap-3">
+                {options.length > 0 && (
                 <label className="max-w-full max-md:w-full">
                     <span className="sr-only">選擇哪一週</span>
                     <select className="w-auto max-w-full rounded-full py-2 pl-4 font-bold shadow-pop-sm focus:shadow-pop-sm focus:border-yolk-deep max-md:w-full" value={weekId}
                             onChange={(e) => setWeekId(e.target.value)}>
-                        {weeks.map((w) => (
+                        {options.map((w) => (
                             <option key={w.id} value={w.id}>
                                 {isBonus(w.kind) ? `【${UNIT[w.kind]}${w.mode === 'group' ? '揪團' : '抖內'}】` : ''}{w.shop || '未命名'}（{formatDay(w.deadline)}截止）
                             </option>
                         ))}
                     </select>
                 </label>
+                )}
+                <button className="btn inline-flex items-center gap-1.5" onClick={() => setHistory(true)}>
+                    <ClockIcon/>歷史訂單
+                </button>
                 {week && (
                     <span className={`pill ml-0 border-3 px-3.5 py-1 font-bold ${isClosed(week.deadline) ? 'text-stamp-dark' : 'bg-scallion-soft text-scallion'}`}>
             {isClosed(week.deadline) ? '已截止' : `收單中，${formatDeadline(week.deadline)} 截止`}
@@ -763,7 +786,18 @@ function StatsPanel({
                 </div>
             </div>
 
-            {!snap ? (
+            {history && (
+                <HistoryDialog weeks={weeks} current={weekId} onClose={() => setHistory(false)} onPick={(id) => {
+                    setWeekId(id)
+                    setHistory(false)
+                }}/>
+            )}
+
+            {!weekId ? (
+                <div className="card flex flex-col items-center gap-3 text-center">
+                    <p>最近一天內沒有團。之前訂過什麼，打開「歷史訂單」看。</p>
+                </div>
+            ) : !snap ? (
                 <p className="text-soy-soft">載入中…</p>
             ) : (
                 <>
@@ -891,6 +925,79 @@ function StatsPanel({
                     </section>
                 </>
             )}
+        </div>
+    )
+}
+
+/** 歷史訂單按鈕上的小時鐘 */
+function ClockIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+            <circle cx="10" cy="10" r="8" fill="var(--color-yolk)" stroke="currentColor" strokeWidth="2"/>
+            <path d="M10 5.5 V10 L13 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+    )
+}
+
+const KIND_PILL = {bento: 'bg-yolk', drink: 'bg-scallion-soft text-scallion', snack: 'bg-crumb'} as const
+
+/** 歷史訂單：所有開過的團，新的在上面；同一家訂過幾次一眼看得到，比較不會訂到重複的。點一團就在統計裡打開 */
+function HistoryDialog({weeks, current, onPick, onClose}: {
+    weeks: Week[]
+    current: string
+    onPick: (id: string) => void
+    onClose: () => void
+}) {
+    const [kind, setKind] = useState<RoundKind | 'all'>('all')
+    const sorted = [...weeks].sort((a, b) => b.deadline.localeCompare(a.deadline))
+    const list = sorted.filter((w) => kind === 'all' || w.kind === kind)
+    const times = new Map<string, number>()
+    for (const w of weeks) times.set(`${w.kind}|${w.shop}`, (times.get(`${w.kind}|${w.shop}`) ?? 0) + 1)
+    return (
+        <div className="fixed inset-0 z-60 grid place-items-center bg-soy/50 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}
+             onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+            <div className="relative flex max-h-[calc(100dvh-32px)] w-full max-w-[40rem] animate-pop flex-col gap-4 rounded-card border-3 border-soy bg-rice p-5 shadow-pop max-md:p-4"
+                 role="dialog" aria-label="歷史訂單">
+                <button
+                    className="absolute -top-4 -right-4 size-11 cursor-pointer rounded-full border-3 border-soy bg-rice text-[1.6rem] leading-none text-soy hover:bg-stamp hover:text-rice"
+                    onClick={onClose} aria-label="關閉" autoFocus
+                >
+                    ×
+                </button>
+                <h2 className="mb-0">歷史訂單</h2>
+                <div className="inline-flex self-start overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:self-stretch" role="radiogroup" aria-label="哪一種團">
+                    {(['all', 'bento', 'drink', 'snack'] as const).map((k, i) => (
+                        <button key={k} role="radio" aria-checked={kind === k} onClick={() => setKind(k)}
+                                className={`${TAB} ${i ? 'border-l-3 border-soy' : ''} aria-checked:bg-soy aria-checked:text-yolk`}>
+                            {k === 'all' ? '全部' : UNIT[k]}
+                        </button>
+                    ))}
+                </div>
+                {list.length === 0 ? (
+                    <p className="text-soy-soft">還沒有開過。</p>
+                ) : (
+                    <ul className="-mx-2 flex flex-col overflow-y-auto">
+                        {list.map((w) => {
+                            const n = times.get(`${w.kind}|${w.shop}`) ?? 1
+                            const who = [isBonus(w.kind) && w.host && `${w.host}${w.mode === 'group' ? '揪團' : '請客'}`, w.owner && `負責人 ${w.owner}`].filter(Boolean).join('・')
+                            return (
+                                <li key={w.id}>
+                                    <button
+                                        className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-yolk-soft ${w.id === current ? 'bg-yolk-soft' : ''}`}
+                                        onClick={() => onPick(w.id)}
+                                    >
+                                        <span className="w-[6.6em] shrink-0 font-num whitespace-nowrap text-soy-soft tabular-nums max-md:w-[6.2em] max-md:text-sm">{formatDay(w.deadline)}</span>
+                                        <span className={`pill ml-0 shrink-0 border-soy ${KIND_PILL[w.kind]}`}>{UNIT[w.kind]}</span>
+                                        <span className="min-w-0 flex-1 truncate font-bold">{w.shop || '未命名'}</span>
+                                        {n > 1 && <span className="shrink-0 text-sm text-stamp-dark">訂過 {n} 次</span>}
+                                        {who && <span className="shrink-0 text-sm text-soy-soft max-md:hidden">{who}</span>}
+                                    </button>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                )}
+            </div>
         </div>
     )
 }

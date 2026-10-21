@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { currentRounds, endsEarly, openConflict, statsPick } from '../src/lib/drink.ts'
+import { currentRounds, endsEarly, openConflict, recentRounds, statsPick } from '../src/lib/drink.ts'
 import { computeStats, shopText } from '../src/lib/stats.ts'
 import type { Order, Week } from '../src/types.ts'
 
@@ -76,4 +76,13 @@ test('便當截止後還顯示「已截止」，到截止那天 17:30（台北�
   assert.equal(currentRounds([late], tpe('18:01')).bento, null)
   // 訂單統計還是看得到上週便當
   assert.equal(statsPick([bento], tpe('20:00')), bento)
+})
+
+test('訂單統計下拉：截止超過一天的團拿掉，到歷史訂單看', () => {
+  // bento 10/23 13:00 截止、snack 10/21 16:00 截止（台北）
+  const tpe = (d: string) => new Date(`${d}+08:00`).getTime()
+  assert.deepEqual(recentRounds([snack, bento], tpe('2026-10-22T15:59')), [snack, bento])
+  assert.deepEqual(recentRounds([snack, bento], tpe('2026-10-22T16:01')), [bento])
+  assert.deepEqual(recentRounds([snack, bento], tpe('2026-10-24T13:01')), [])
+  assert.equal(statsPick([snack, bento], tpe('2026-10-24T13:01')), null)
 })

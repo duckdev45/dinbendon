@@ -36,7 +36,7 @@ export function useConfirm() {
         <p className="text-[1.2rem] whitespace-pre-line">{req.text}</p>
         {req.password && (
           <label className="field text-left">
-            <span className="field-label">開團密碼</span>
+            <span className="field-label req">開團密碼</span>
             <input value={pw} onChange={(e) => setPw(e.target.value)} autoFocus autoComplete="off" placeholder="開團時設定的那組" />
             {req.hint && <span className="text-sm text-stamp-dark">{req.hint}</span>}
           </label>

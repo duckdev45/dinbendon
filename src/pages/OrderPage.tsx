@@ -240,7 +240,7 @@ export function OrderPage() {
                     ) : (
                         <form onSubmit={submit} className="flex flex-col gap-[18px]">
                             <label className="field">
-                                <span className="field-label">你的名字</span>
+                                <span className="field-label req">你的名字</span>
                                 <input
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
@@ -262,7 +262,7 @@ export function OrderPage() {
                             )}
 
                             <fieldset className="field">
-                                <legend className="field-label">選便當</legend>
+                                <legend className="field-label req">選便當</legend>
                                 <div
                                     className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3 max-md:grid-cols-2"
                                     role="radiogroup">
