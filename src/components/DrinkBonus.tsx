@@ -16,7 +16,7 @@ const CHIP =
 
 /** 「許慶良鮮奶珍珠（只有 M）」→ ['許慶良鮮奶珍珠', '只有 M']；沒有括號就第二個是空字串 */
 function splitNote(name: string): [string, string] {
-    const m = name.match(/^(.+?)（([^（）]+)）$/)
+    const m = name.match(/^(.+?)\s*[（(]\s*([^（）()]+?)\s*[）)]$/)
     return m ? [m[1], m[2]] : [name, '']
 }
 
@@ -288,19 +288,24 @@ export function DrinkBonus({
                             )}
                         </legend>
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2" role="radiogroup">
-                            {week.items.map((it) => (
-                                // 一律一行：名字後面的（只有 M）（茶乳）縮成小字，太長就截掉，滑鼠移上去看全名
-                                <label key={it.id} title={it.name}
-                                       className={`${CHIP} flex items-center gap-1.5 rounded-xl whitespace-nowrap`}>
-                                    <input className="sr-only" type="radio" name="item" checked={itemId === it.id}
-                                           onChange={() => setItemId(it.id)}/>
-                                    <span className="min-w-0 truncate">{splitNote(it.name)[0]}</span>
-                                    {splitNote(it.name)[1] && (
-                                        <span className="shrink-0 rounded-full bg-yolk-soft px-1.5 text-xs text-soy-soft">{splitNote(it.name)[1]}</span>
-                                    )}
-                                    {it.price > 0 && <span className="ml-auto shrink-0 pl-1 font-num text-soy-soft">${it.price}</span>}
-                                </label>
-                            ))}
+                            {week.items.map((it) => {
+                                const [name, note] = splitNote(it.name)
+                                // 名字一行；（只有 M）（茶乳）這種備註放第二行小字，太長就截掉，滑鼠移上去看全名
+                                return (
+                                    <label key={it.id} title={it.name}
+                                           className={`${CHIP} flex items-center gap-1.5 rounded-xl whitespace-nowrap`}>
+                                        <input className="sr-only" type="radio" name="item" checked={itemId === it.id}
+                                               onChange={() => setItemId(it.id)}/>
+                                        <span className="flex min-w-0 flex-col items-start gap-0.5">
+                                            <span className="max-w-full truncate">{name}</span>
+                                            {note && (
+                                                <span className="max-w-full truncate rounded-full bg-yolk-soft px-1.5 text-xs text-soy-soft">{note}</span>
+                                            )}
+                                        </span>
+                                        {it.price > 0 && <span className="ml-auto shrink-0 pl-1 font-num text-soy-soft">${it.price}</span>}
+                                    </label>
+                                )
+                            })}
                         </div>
                     </fieldset>
 

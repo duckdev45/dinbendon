@@ -137,6 +137,7 @@ export function createDemoApi(): Api {
         const now = new Date().toISOString()
         const prev = db.weeks.find((w) => w.id === draft.id)
         if (prev && endsEarly(prev, draft.deadline)) checkPassword(db, prev.id, roundPassword)
+        if (prev) checkSecret(db, prev.id, secret)
         const busy = openConflict(db.weeks, draft)
         if (busy) throw new Error(`${busy.host || '有人'} 已經開了${busy.kind === 'drink' ? '飲料' : '點心'}團，重新整理看看`)
         if (prev && prev.shop !== draft.shop && db.orders.some((o) => o.weekId === draft.id)) throw new Error('已經有人點了，不能換店家')

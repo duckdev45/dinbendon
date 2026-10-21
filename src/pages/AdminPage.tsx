@@ -7,7 +7,7 @@ import {useToast} from '../components/Toast'
 import {exportExcel} from '../lib/excel'
 import {shrinkImage, uid} from '../lib/image'
 import {MAX_PRICE, presets} from '../shops'
-import {currentRounds, endsEarly, isBonus, recentRounds, secretName, statsPick} from '../lib/drink'
+import {currentRounds, endsEarly, isBonus, privateRounds, recentRounds, secretName, statsPick} from '../lib/drink'
 import {computeStats, drinkSummary, orderLabel, orderPrice, shopText} from '../lib/stats'
 import {
     defaultDeadline,
@@ -51,6 +51,24 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
     const [shopRows, setShopRows] = useState<ShopRow[] | null>(null)
     const {ask, node: confirmNode} = useConfirm()
     const shops = useMemo(() => presets(kind, weeks ?? [], shopRows ?? []), [kind, weeks, shopRows])
+    // 喝飲料不揪開完，飲料頁就回到公開的團；要改截止時間、流團，從上面那排叫出來（輸入通關密碼，從後端拿完整那團）
+    // fresh = 剛開好，進來先秀連結和通關密碼
+    const [priv, setPriv] = useState<{ week: Week; secret: string; fresh?: boolean } | null>(null)
+    const privList = privateRounds(weeks ?? [], kind)
+    const listed = priv && privList.find((w) => w.id === priv.week.id)
+    // 截止了、換頁就不管了；清單沒有誰揪、負責人（後端遮掉），用拿到的那份補回來
+    const managing = listed ? {...priv!, week: {...listed, host: priv!.week.host, owner: priv!.week.owner}} : null
+
+    async function manage(w: Week) {
+        const v = await ask(`${secretName(w.kind)}\n輸入通關密碼才能管理這團`, {ok: '管理', password: true, label: '通關密碼', icon: <LockIcon size={56}/>})
+        if (v === null) return
+        try {
+            const {week} = await api.admin.getWeek(pw, w.id, v.trim())
+            if (week) setPriv({week, secret: v.trim()})
+        } catch (e) {
+            toast.show((e as Error).message, 'error')
+        }
+    }
 
     const loadWeeks = useCallback(async () => {
         try {
@@ -76,12 +94,12 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                 <h1 className="text-[1.8rem]">訂單管理</h1>
                 <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:flex max-md:w-full"
                      role="tablist">
-                    <button role="tab" className={TAB} aria-selected={tab === 'stats'} onClick={() => setTab('stats')}>
+                    <button role="tab" className={TAB} aria-selected={tab === 'stats'} onClick={() => (setTab('stats'), setPriv(null))}>
                         訂單統計
                     </button>
                     {(['menu', 'drink', 'snack'] as const).map((t) => (
                         <button key={t} role="tab" className={`${TAB} border-l-3 border-soy`} aria-selected={tab === t}
-                                onClick={() => setTab(t)}>
+                                onClick={() => (setTab(t), setPriv(null))}>
                             {UNIT[t === 'menu' ? 'bento' : t]}
                         </button>
                     ))}
@@ -91,14 +109,30 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                 <p className="text-soy-soft">載入中…</p>
             ) : tab !== 'stats' ? (
                 <>
+                {privList.length > 0 && (
+                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 font-bold"><LockIcon size={18}/>收單中的{secretName(kind)}</span>
+                        {privList.map((w) => (
+                            <button key={w.id} className={`btn ${managing?.week.id === w.id ? 'btn-primary' : 'btn-ghost'}`}
+                                    onClick={() => manage(w)} disabled={managing?.week.id === w.id}>
+                                {w.shop || '未命名'}・{formatDeadline(w.deadline)}截止
+                            </button>
+                        ))}
+                        {managing && <button className="link-btn" onClick={() => setPriv(null)}>回到公開的團</button>}
+                    </div>
+                )}
                 <MenuEditor
-                    key={`${tab}-${currentRounds(weeks)[kind]?.id ?? 'new'}`}
+                    key={`${tab}-${managing?.week.id ?? currentRounds(weeks)[kind]?.id ?? 'new'}`}
                     kind={kind}
                     shops={shops}
                     ask={ask}
                     pw={pw}
                     // 飲料團、點心團只接著編收單中的那團，截止了就開新的
-                    current={currentRounds(weeks)[kind]}
+                    current={managing?.week ?? currentRounds(weeks)[kind]}
+                    secret={managing?.secret}
+                    invite={managing?.fresh}
+                    // 開好的喝飲料不揪換成管理那團，不然編輯器還掛著原本公開的團（店家鎖、提早結束的密碼會對錯團）
+                    onCreatedPrivate={(week, secret) => setPriv({week, secret, fresh: true})}
                     toast={toast}
                     onSaved={async () => {
                         await loadWeeks()
@@ -136,6 +170,9 @@ function MenuEditor({
                         ask,
                         pw,
                         current,
+                        secret: initialSecret = '',
+                        invite: initialInvite = false,
+                        onCreatedPrivate,
                         toast,
                         onSaved,
                     }: {
@@ -145,6 +182,10 @@ function MenuEditor({
     ask: Ask
     pw: string
     current: Week | null
+    /** 管理喝飲料不揪時帶通關密碼，改內容、流團後端要驗 */
+    secret?: string
+    invite?: boolean
+    onCreatedPrivate: (week: Week, secret: string) => void
     toast: ReturnType<typeof useToast>
     onSaved: () => Promise<void>
 }) {
@@ -158,9 +199,9 @@ function MenuEditor({
     // 開團密碼：開新團時設定，之後刪訂單、提早結束要輸入
     const [roundPw, setRoundPw] = useState('')
     // 喝飲料不揪的通關密碼：開團時設定，給要揪的人
-    const [secret, setSecret] = useState('')
+    const [secret, setSecret] = useState(initialSecret)
     // 喝飲料不揪開好後在畫面中間秀連結＋通關密碼，一鍵複製整段貼到群組
-    const [invite, setInvite] = useState(false)
+    const [invite, setInvite] = useState(initialInvite)
     const link = `${window.location.origin}${window.location.pathname}#/r/${draft.id}`
     const inviteText = [
         `【${secretName(kind)}】${draft.host} ${draft.mode === 'group' ? '揪團' : '請'}${drink ? '喝' : '吃'}${unit}！`,
@@ -173,7 +214,7 @@ function MenuEditor({
     const [ordered, setOrdered] = useState<number | null>(null)
     useEffect(() => {
         if (!current || drink) return
-        api.admin.getWeek(pw, current.id).then((s) => setOrdered(s.orders.length)).catch(() => setOrdered(null))
+        api.admin.getWeek(pw, current.id, secret).then((s) => setOrdered(s.orders.length)).catch(() => setOrdered(null))
     }, [current?.id]) // eslint-disable-line react-hooks/exhaustive-deps
     const shopLocked = !drink && !isNew && !!ordered
     const [uploading, setUploading] = useState(false)
@@ -268,7 +309,7 @@ function MenuEditor({
         if (input === null) return
         setSaving(true)
         try {
-            await api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()}, input)
+            await api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()}, input, secret)
             toast.show(`${unit}團已關閉`, 'ok', ICON[kind])
             await onSaved()
         } catch (e) {
@@ -310,10 +351,10 @@ function MenuEditor({
             // 舊版 Code.gs 不認得飲料團、點心團，會存成便當蓋掉這週菜單
             if (saved.kind !== kind) throw new Error(`後端 Code.gs 是舊版，請先貼上新版並部署，再開${unit}團`)
             setDraft(saved)
-            if (isNew && saved.private) setInvite(true)
-            else toast.show(isNew ? (bonus ? `${draft.mode === 'group' ? '揪團' : '抖內'}開好了，大家的畫面會跳出來` : '菜單已發佈，大家可以點了') : '菜單已儲存', 'ok', ICON[kind])
+            if (!(isNew && saved.private)) toast.show(isNew ? (bonus ? `${draft.mode === 'group' ? '揪團' : '抖內'}開好了，大家的畫面會跳出來` : '菜單已發佈，大家可以點了') : '菜單已儲存', 'ok', ICON[kind])
             setIsNew(false)
             await onSaved()
+            if (isNew && saved.private) onCreatedPrivate(saved, secret)
         } catch (e) {
             toast.show((e as Error).message, 'error')
             // 可能是別人先開了同一種團：重抓一次，畫面就會換成那團（沒撞到的話 key 不變，草稿還在）

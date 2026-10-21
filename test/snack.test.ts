@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { currentRounds, endsEarly, openConflict, recentRounds, statsPick } from '../src/lib/drink.ts'
+import { currentRounds, endsEarly, openConflict, privateRounds, recentRounds, statsPick } from '../src/lib/drink.ts'
 import { computeStats, shopText } from '../src/lib/stats.ts'
 import type { Order, Week } from '../src/types.ts'
 
@@ -95,4 +95,14 @@ test('私人小團：點餐頁、統計預設都不算，也不擋公開的團',
   assert.equal(openConflict([secret, bento], { id: 'p2', kind: 'snack' }, now), null)
   assert.equal(openConflict([snack, bento], { id: 'p2', kind: 'snack', private: true }, now), null)
   assert.notEqual(statsPick([secret, bento], now)?.id, 'p1')
+})
+
+test('後台管理不揪團：只列同種類、收單中的不揪團，新開的在前', () => {
+  const now = new Date(snack.createdAt).getTime() + 60_000
+  const p1 = { ...snack, id: 'p1', private: true } as Week
+  const p2 = { ...snack, id: 'p2', private: true, createdAt: new Date(now).toISOString() } as Week
+  const done = { ...snack, id: 'p3', private: true, deadline: snack.createdAt } as Week
+  const drinkP = { ...snack, id: 'p4', kind: 'drink', private: true } as Week
+  assert.deepEqual(privateRounds([p1, snack, done, drinkP, p2, bento], 'snack', now).map((w) => w.id), ['p2', 'p1'])
+  assert.deepEqual(privateRounds([snack, bento], 'snack', now), [])
 })

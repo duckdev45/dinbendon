@@ -30,6 +30,13 @@ export const isBonus = (kind: string) => kind === 'drink' || kind === 'snack'
 /** 秘密團（Week.private）叫什麼；後端 Code.gs 錯誤訊息一樣 */
 export const secretName = (kind: string) => (kind === 'snack' ? '吃點心不揪' : '喝飲料不揪')
 
+/** 後台飲料、點心頁列出來管理的不揪團：同種類、收單中，新開的在前 */
+export function privateRounds(weeks: Week[], kind: string, now = Date.now()) {
+  return weeks
+    .filter((w) => w.kind === kind && w.private && now < new Date(w.deadline).getTime())
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
 /**
  * 便當截止後點餐頁還顯示「已截止」，到截止那天 17:30（台北）清空；截止時間比 17:30 晚就截止即清空。
  * 後端 Code.gs bentoGone_ 一樣的算法

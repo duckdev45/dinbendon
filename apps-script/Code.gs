@@ -160,6 +160,8 @@ var ACTIONS = {
         var end = new Date(w.deadline).getTime();
         if (end <= Date.now() && Date.now() < new Date(rows[hit].deadline).getTime()) checkPassword_(rows[hit], p.roundPassword);
       }
+      // 喝飲料不揪：改內容、流團也要通關密碼，只知道後台密碼的人動不了
+      if (hit >= 0) checkSecret_(rows[hit], p.secret);
       if (hit >= 0 && String(w.shop || '') !== rows[hit].shop) {
         var ordered = readRows_(sheet_('orders'), ORDER_COLS).some(function (o) { return o.weekId === w.id; });
         if (ordered) throw new Error('已經有人點了，不能換店家');
