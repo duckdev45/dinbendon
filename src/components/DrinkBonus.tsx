@@ -1,9 +1,10 @@
 import {useEffect, useState} from 'react'
 import {api} from '../api'
-import {ICE, SUGAR} from '../lib/drink'
+import {drinkType, ICE, SUGAR} from '../lib/drink'
 import {normName, orderLabel, orderPrice, personLine} from '../lib/stats'
 import type {Order, Snapshot, Week} from '../types'
 import {BobaCup} from './BobaCup'
+import {DrinkWheel} from './DrinkWheel'
 import {ShopLogo} from './ShopLogo'
 import type {useConfirm} from './Confirm'
 import type {useToast} from './Toast'
@@ -31,6 +32,19 @@ const WORDS = {
     drink: {unit: '飲料', eat: '喝', one: '杯', Mascot: BobaCup, icon: 'boba'},
     snack: {unit: '點心', eat: '吃', one: '個', Mascot: WheelCake, icon: 'wheel'},
 } as const
+
+/** 小轉盤圖示，滑過去會轉 */
+function WheelIcon() {
+    return (
+        <svg className="transition-transform duration-500 group-hover:rotate-180" width="24" height="24" viewBox="-12 -12 24 24" aria-hidden>
+            {[0, 1, 2, 3].map((i) => (
+                <path key={i} d="M0 0 L0 -10 A10 10 0 0 1 10 0 Z" transform={`rotate(${i * 90})`}
+                      fill={i % 2 ? 'var(--color-rice)' : 'var(--color-scallion)'} stroke="var(--color-soy)" strokeWidth="1.8" strokeLinejoin="round"/>
+            ))}
+            <circle r="3" fill="var(--color-stamp)" stroke="var(--color-soy)" strokeWidth="1.5"/>
+        </svg>
+    )
+}
 
 /**
  * 飲料團、點心團：像廣告一樣從畫面中間跳出來，按「我要喝／我要吃」才進點單。
@@ -70,6 +84,9 @@ export function DrinkBonus({
     const [ice, setIce] = useState('')
     const [addonId, setAddonId] = useState('')
     const [busy, setBusy] = useState(false)
+    // 選擇障礙轉盤：只有飲料團、菜單裡有分得出茶類／奶類的才出現
+    const [wheel, setWheel] = useState(false)
+    const canSpin = drink && week.items.some((it) => drinkType(it.name))
     const [now, setNow] = useState(Date.now())
     const left = new Date(week.deadline).getTime() - now
 
@@ -250,7 +267,19 @@ export function DrinkBonus({
                     )}
 
                     <fieldset className="field">
-                        <legend className="field-label">選{unit}</legend>
+                        <legend className="field-label mb-2 flex w-full items-center justify-between">
+                            選{unit}
+                            {canSpin && (
+                                <button
+                                    type="button"
+                                    className="group inline-flex cursor-pointer items-center gap-1.5 rounded-full border-3 border-soy bg-yolk py-1 pr-3.5 pl-1.5 text-sm font-bold text-soy shadow-pop-sm transition-[translate] hover:-translate-y-0.5"
+                                    onClick={() => setWheel(true)}
+                                >
+                                    <WheelIcon/>
+                                    選擇障礙？轉一下
+                                </button>
+                            )}
+                        </legend>
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2" role="radiogroup">
                             {week.items.map((it) => (
                                 // 一律一行：名字後面的（只有 M）（茶乳）縮成小字，太長就截掉，滑鼠移上去看全名
@@ -308,6 +337,13 @@ export function DrinkBonus({
                         {busy ? '送出中…' : mine ? `換這${one}` : `就${eat}這${one}！`}
                     </button>
                 </form>
+            )}
+            {/* 放在 form 外面：form 有 animate-pop 的 transform，fixed 會被它框住 */}
+            {wheel && (
+                <DrinkWheel items={week.items} onClose={() => setWheel(false)} onPick={(id) => {
+                    setItemId(id)
+                    setWheel(false)
+                }}/>
             )}
         </div>
     )

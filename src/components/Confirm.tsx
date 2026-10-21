@@ -24,7 +24,7 @@ export function useConfirm() {
   const node = req && (
     <div className="fixed inset-0 z-60 grid place-items-center bg-soy/40 p-4" onClick={(e) => e.target === e.currentTarget && close(null)}>
       <form
-        className="flex w-[22rem] max-w-full animate-pop flex-col gap-4 rounded-card border-3 border-soy bg-rice px-6 pt-5 pb-6 text-center shadow-pop"
+        className="flex w-full max-w-[22rem] animate-pop flex-col gap-4 rounded-card border-3 border-soy bg-rice px-6 pt-5 pb-6 text-center shadow-pop"
         role="alertdialog"
         aria-label={req.text}
         onKeyDown={(e) => e.key === 'Escape' && close(null)}

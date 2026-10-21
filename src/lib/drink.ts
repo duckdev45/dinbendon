@@ -15,6 +15,15 @@ export function drinkOptions(week: Week, input: Pick<PlaceOrderInput, 'sugar' | 
   }
 }
 
+// 選擇障礙轉盤：品名有奶的算奶類，其他茶、果茶都算茶類；兩邊都對不到（購物袋、黑糖珍珠）不上轉盤
+// 「奶蓋」「奶霜」是茶上面一層，底還是茶，不算奶類
+const MILK = /奶茶|鮮奶|牛奶|拿鐵|那堤|奶綠|奶青|歐蕾|厚奶|可可|阿華田|巧克力|奶昔|凍奶|雪奶|嫩奶|撞奶|濃乳|燕麥奶|蕎麥奶(?!蓋)|烏奶|泰奶|豆花|瑪奇朵/
+const TEA = /茶|烏龍|觀音|普洱|包種|金萱|翠玉|東方美人|綠|紅|青|春|茉|蕎麥|大麥|菁|雪芽|隱山|丹寧|藍山|琥珀|火炭|30[78]|505|雲蓋|月光|朱丰|平川|卡紅|蜂凝露|冬露|冬瓜|仙草|檸|柚|橙|柳丁|百香|芒|愛文|葡萄|莓|鳳梨|旺來|甘蔗|梅|蘋果|荔|梨|西瓜|果|桔|橘|柑|椰|芭樂|桃|多多|樂多|優|甘露|蜜朵朵|曼美|抹一點酸/
+
+export function drinkType(name: string): 'tea' | 'milk' | null {
+  return MILK.test(name) ? 'milk' : TEA.test(name) ? 'tea' : null
+}
+
 /** 飲料團、點心團：限時、有人開團，抖內或揪團 */
 export const isBonus = (kind: string) => kind === 'drink' || kind === 'snack'
 
