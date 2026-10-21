@@ -10,7 +10,7 @@
  */
 
 // 新欄位只能加在最後：讀寫都照欄位順序，舊試算表的表頭會自動補上
-var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt', 'kind', 'addons', 'host', 'mode'];
+var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt', 'kind', 'addons', 'host', 'mode', 'password', 'owner'];
 var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt', 'options', 'addonIds']; // 一人一份；金額照菜單單價＋加料算
 // 後台手動維護的常用店家，一種團一家一列；開過的團前端會自動算進常用店家，不寫這張表
 var SHOP_COLS = ['kind', 'shop', 'imageUrl', 'items', 'addons', 'hidden', 'updatedAt'];
@@ -41,14 +41,15 @@ function doPost(e) {
 }
 
 var ACTIONS = {
-  // 便當永遠是最新一筆便當菜單；飲料團、點心團只在收單中才回傳
+  // 便當是最新一筆便當菜單，過了清空時間（截止那天 17:30）就不回傳；飲料團、點心團只在收單中才回傳
   getCurrent: function () {
     var weeks = allWeeks_();
     var open = function (kind) {
       var w = weeks.filter(function (x) { return x.kind === kind; })[0];
       return w && Date.now() < new Date(w.deadline).getTime() ? snapshot_(w) : null;
     };
-    var cur = snapshot_(weeks.filter(function (w) { return w.kind === 'bento'; })[0] || null);
+    var bento = weeks.filter(function (w) { return w.kind === 'bento'; })[0];
+    var cur = snapshot_(bento && !bentoGone_(bento.deadline) ? bento : null);
     cur.drink = open('drink');
     cur.snack = open('snack');
     return cur;
@@ -114,10 +115,13 @@ var ACTIONS = {
     return null;
   },
 
-  // 順便帶最新一團的訂單和常用店家，後台進來只要打一次（Apps Script 每次呼叫都要 1–3 秒）
+  // 順便帶訂單統計預設那團的訂單和常用店家，後台進來只要打一次（Apps Script 每次呼叫都要 1–3 秒）
+  // 預設那團：收單中的飲料、點心團優先，不然這週便當（跟前端 src/lib/drink.ts statsPick 一樣）
   adminListWeeks: function (p) {
     var weeks = allWeeks_();
-    return { weeks: weeks, latest: snapshot_(weeks[0] || null), shops: allShops_() };
+    var open = weeks.filter(function (w) { return w.kind !== 'bento' && Date.now() < new Date(w.deadline).getTime(); })[0];
+    var pick = open || weeks.filter(function (w) { return w.kind === 'bento'; })[0] || weeks[0] || null;
+    return { weeks: weeks, latest: snapshot_(pick), shops: allShops_() };
   },
 
   adminGetWeek: function (p) {
@@ -132,6 +136,11 @@ var ACTIONS = {
       var rows = readRows_(sheet, WEEK_COLS);
       var hit = -1;
       for (var i = 0; i < rows.length; i++) if (rows[i].id === w.id) { hit = i; break; }
+      // 有設開團密碼的團，提早結束（流團、截止時間改到現在以前）要輸入密碼（跟前端 src/lib/drink.ts endsEarly 一樣）
+      if (hit >= 0 && rows[hit].password) {
+        var end = new Date(w.deadline).getTime();
+        if (end <= Date.now() && Date.now() < new Date(rows[hit].deadline).getTime()) checkPassword_(rows[hit], p.roundPassword);
+      }
       if (hit >= 0 && String(w.shop || '') !== rows[hit].shop) {
         var ordered = readRows_(sheet_('orders'), ORDER_COLS).some(function (o) { return o.weekId === w.id; });
         if (ordered) throw new Error('已經有人點了，不能換店家');
@@ -162,8 +171,12 @@ var ACTIONS = {
         updatedAt: now,
         kind: kind,
         addons: JSON.stringify(kind === 'drink' ? (w.addons || []).map(clean) : []),
-        host: kind !== 'bento' ? String(w.host || '').trim().slice(0, 20) : '',
+        host: kind !== 'bento' ? String(w.host || '').trim().slice(0, 20) : '', // 飲料團、點心團誰請客／誰揪的
         mode: w.mode === 'group' ? 'group' : 'treat', // 飲料團、點心團：treat 抖內、group 揪團
+        // 只存雜湊；開團時沒帶密碼（舊版前端）就不設，之後也不能補
+        password: hit >= 0 ? rows[hit].password : (String(p.roundPassword || '').trim() ? hash_(p.roundPassword) : ''),
+        // 負責人跟密碼一起在開團時填，之後不能改
+        owner: hit >= 0 ? rows[hit].owner : String(w.owner || '').trim().slice(0, 20),
       };
       writeRow_(sheet, WEEK_COLS, row, hit >= 0 ? hit + 2 : null);
       return castWeek_(row);
@@ -223,6 +236,9 @@ var ACTIONS = {
     return withLock_(function () {
       var sheet = sheet_('orders');
       var rows = readRows_(sheet, ORDER_COLS);
+      var order = rows.filter(function (o) { return o.id === p.orderId; })[0];
+      var week = order && readRows_(sheet_('weeks'), WEEK_COLS).filter(function (w) { return w.id === order.weekId; })[0];
+      if (week) checkPassword_(week, p.roundPassword);
       for (var i = rows.length - 1; i >= 0; i--) if (rows[i].id === p.orderId) sheet.deleteRow(i + 2);
       return null;
     });
@@ -283,6 +299,7 @@ function castWeek_(r) {
   return {
     id: r.id, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'bento', shop: r.shop, imageUrl: r.imageUrl, deadline: r.deadline,
     items: castItems_(r.items), addons: castItems_(r.addons), host: r.host || '', mode: r.mode === 'group' ? 'group' : 'treat',
+    owner: r.owner || '', hasPassword: !!r.password, // 密碼雜湊不回傳
     createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
@@ -359,6 +376,24 @@ function withLock_(fn) {
     SpreadsheetApp.flush();
     lock.releaseLock();
   }
+}
+
+// 開團密碼只存 SHA-256；舊團沒設（空字串）就不檢查
+function hash_(s) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'dinbendon|' + String(s || '').trim(), Utilities.Charset.UTF_8);
+  return Utilities.base64Encode(bytes);
+}
+
+function checkPassword_(row, input) {
+  if (row.password && row.password !== hash_(input)) throw new Error('密碼不對，請聯絡負責人' + (row.owner ? ' ' + row.owner : ''));
+}
+
+// 跟前端 src/lib/drink.ts bentoGone 一樣：截止那天 17:30（台北）和截止時間取晚的
+function bentoGone_(deadline) {
+  var end = new Date(deadline).getTime();
+  var t = new Date(end + 8 * 3600000);
+  var clear = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), 17 - 8, 30);
+  return Date.now() >= Math.max(end, clear);
 }
 
 function norm_(s) {

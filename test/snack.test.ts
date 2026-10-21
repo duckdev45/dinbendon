@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { currentRounds, openConflict } from '../src/lib/drink.ts'
+import { currentRounds, endsEarly, openConflict, statsPick } from '../src/lib/drink.ts'
 import { computeStats, shopText } from '../src/lib/stats.ts'
 import type { Order, Week } from '../src/types.ts'
 
@@ -46,4 +46,34 @@ test('同一種團同時只能有一團收單中：另開一團會被擋，改�
   assert.equal(openConflict([snack, bento], { ...other, kind: 'drink' } as Week, now), null)
   assert.equal(openConflict([snack, bento], other, now + 3600_000), null)
   assert.equal(openConflict([snack, bento], { ...bento, id: 'b2' } as Week, now), null)
+})
+
+test('訂單統計預設：有限時團收單中先看它，結束了回到這週便當', () => {
+  const now = new Date('2026-10-21T07:30:00.000Z').getTime()
+  assert.equal(statsPick([snack, bento], now), snack)
+  assert.equal(statsPick([snack, bento], now + 3600_000), bento)
+  assert.equal(statsPick([], now), null)
+})
+
+test('提早結束要密碼：還在收單、存檔後截止時間已經過了才算；舊團沒設密碼不用', () => {
+  const now = new Date('2026-10-21T07:30:00.000Z').getTime()
+  const locked = { ...snack, hasPassword: true } as Week
+  assert.equal(endsEarly(locked, '2026-10-21T07:30:00.000Z', now), true)
+  assert.equal(endsEarly(locked, '2026-10-21T09:00:00.000Z', now), false)
+  assert.equal(endsEarly(locked, '2026-10-21T07:00:00.000Z', now + 3600_000), false)
+  assert.equal(endsEarly(snack, '2026-10-21T07:30:00.000Z', now), false)
+  assert.equal(endsEarly(null, '2026-10-21T07:30:00.000Z', now), false)
+})
+
+test('便當截止後還顯示「已截止」，到截止那天 17:30（台北）就清空', () => {
+  // bento 週五 13:00 截止
+  const tpe = (hhmm: string) => new Date(`2026-10-23T${hhmm}:00+08:00`).getTime()
+  assert.equal(currentRounds([bento], tpe('17:29')).bento, bento)
+  assert.equal(currentRounds([bento], tpe('17:31')).bento, null)
+  // 截止時間比 17:30 晚：截止就清空
+  const late = { ...bento, deadline: '2026-10-23T10:00:00.000Z' } as Week
+  assert.equal(currentRounds([late], tpe('17:45')).bento, late)
+  assert.equal(currentRounds([late], tpe('18:01')).bento, null)
+  // 訂單統計還是看得到上週便當
+  assert.equal(statsPick([bento], tpe('20:00')), bento)
 })

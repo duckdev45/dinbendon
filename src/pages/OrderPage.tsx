@@ -4,6 +4,7 @@ import {BobaCup} from '../components/BobaCup'
 import {Bowl, type BowlMood} from '../components/Bowl'
 import {Countdown} from '../components/Countdown'
 import {BobaBuddy} from '../components/BobaBuddy'
+import {useConfirm} from '../components/Confirm'
 import {DrinkBonus} from '../components/DrinkBonus'
 import {useToast} from '../components/Toast'
 import {WheelCake} from '../components/WheelCake'
@@ -39,6 +40,7 @@ export function OrderPage() {
     const [zoom, setZoom] = useState(false)
     const [, forceTick] = useState(0)
     const toast = useToast()
+    const {ask, node: confirmNode} = useConfirm()
 
     const refresh = useCallback(async () => {
         try {
@@ -97,7 +99,7 @@ export function OrderPage() {
 
     async function cancel() {
         if (!week || !mine) return
-        if (!window.confirm(`確定取消 ${mine.itemName}？`)) return
+        if ((await ask(`確定取消 ${mine.itemName}？`, {ok: '取消訂單'})) === null) return
         setBusy(true)
         try {
             await api.cancelOrder(week.id, mine.name)
@@ -121,6 +123,7 @@ export function OrderPage() {
                 name={name}
                 setName={setName}
                 toast={toast}
+                ask={ask}
                 onChange={async () => {
                     if (name.trim()) rememberName(name)
                     await refresh()
@@ -158,6 +161,7 @@ export function OrderPage() {
             // 完全沒有便當團：讓人直接選要開便當、飲料還是點心
             <main className="page flex min-h-[70vh] flex-col items-center justify-center gap-6 pb-40 text-center">
                 {toast.node}
+                {confirmNode}
                 {drink}
                 <h1 className="text-[1.8rem]">現在沒有團，要開什麼？</h1>
                 <div className="grid w-full max-w-[960px] grid-cols-3 gap-6 max-md:grid-cols-1">
@@ -183,6 +187,7 @@ export function OrderPage() {
     return (
         <main className={`page ${stacked ? 'pb-72' : 'pb-44'}`}>{/* 右下角的飲料／點心小卡、珍奶，留空間才不會蓋到訂便當按鈕 */}
             {toast.node}
+                {confirmNode}
             {drink}
 
             <section
@@ -229,7 +234,7 @@ export function OrderPage() {
                                     你這週點的是 <b>{mine.itemName}</b>，等開飯！
                                 </p>
                             ) : (
-                                <p className="my-4 text-soy-soft">這週的訂單已經收齊，下週記得早點點。要補點請直接找負責人。</p>
+                                <p className="my-4 text-soy-soft">這週的訂單已經收齊，下週記得早點點。要補點請直接找負責人{week.owner ? ` ${week.owner}` : ''}。</p>
                             )}
                         </div>
                     ) : (

@@ -22,9 +22,13 @@ export interface Week {
   items: MenuItem[]
   /** 飲料加料；便當為空 */
   addons: MenuItem[]
-  /** 飲料團、點心團：誰開的團、抖內還是揪團；便當為空字串 / treat */
+  /** 飲料團、點心團：誰請客／誰揪的、抖內還是揪團；便當為空字串 / treat */
   host: string
   mode: DrinkMode
+  /** 負責人：開團時跟密碼一起填，之後不能改；有問題找他。舊團沒有 */
+  owner?: string
+  /** 開團時有設密碼（刪訂單、提早結束要輸入）；密碼本身不會傳到前端。舊團沒有 */
+  hasPassword?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -92,9 +96,11 @@ export interface Api {
     /** 順便帶最新一團的訂單和常用店家，省往返；舊版 Code.gs 沒有 shops */
     listWeeks(password: string): Promise<{ weeks: Week[]; latest: Snapshot; shops?: ShopRow[] }>
     getWeek(password: string, weekId: string): Promise<Snapshot>
-    saveWeek(password: string, week: WeekDraft): Promise<Week>
+    /** roundPassword：開新團時設定；提早結束（endsEarly）時驗證 */
+    saveWeek(password: string, week: WeekDraft, roundPassword?: string): Promise<Week>
     uploadImage(password: string, dataUrl: string, filename: string): Promise<string>
-    deleteOrder(password: string, orderId: string): Promise<void>
+    /** 那團有設開團密碼就要帶 */
+    deleteOrder(password: string, orderId: string, roundPassword?: string): Promise<void>
     /** 新增、修改、刪除（hidden）常用店家；from = 改名前的店名。回傳整份 shops */
     saveShop(password: string, shop: Omit<ShopRow, 'updatedAt'>, from?: string): Promise<ShopRow[]>
   }

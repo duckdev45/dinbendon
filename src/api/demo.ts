@@ -1,7 +1,7 @@
 import type { Api, Order, ShopRow, Snapshot, Week } from '../types'
 import { defaultDeadline, isClosed } from '../lib/time'
 import { normName } from '../lib/stats'
-import { currentRounds, drinkOptions, openConflict } from '../lib/drink'
+import { currentRounds, drinkOptions, endsEarly, openConflict } from '../lib/drink'
 import { uid } from '../lib/image'
 
 /**
@@ -15,6 +15,14 @@ interface Db {
   orders: Order[]
   /** 舊的 demo 資料沒有 */
   shops?: ShopRow[]
+  /** 開團密碼，跟 week 分開放，不會跟著菜單傳出去 */
+  passwords?: Record<string, string>
+}
+
+function checkPassword(db: Db, weekId: string, input = '') {
+  const pw = db.passwords?.[weekId]
+  const owner = db.weeks.find((w) => w.id === weekId)?.owner
+  if (pw && pw !== input.trim()) throw new Error(`密碼不對，請聯絡負責人${owner ? ' ' + owner : ''}`)
 }
 
 const wait = (ms = 220) => new Promise((r) => setTimeout(r, ms))
@@ -102,15 +110,17 @@ export function createDemoApi(): Api {
         const db = load()
         return snapshot(db, db.weeks.find((w) => w.id === weekId) ?? null)
       },
-      async saveWeek(_pw, draft) {
+      async saveWeek(_pw, draft, roundPassword = '') {
         await wait(400)
         const db = load()
         const now = new Date().toISOString()
         const prev = db.weeks.find((w) => w.id === draft.id)
+        if (prev && endsEarly(prev, draft.deadline)) checkPassword(db, prev.id, roundPassword)
         const busy = openConflict(db.weeks, draft)
         if (busy) throw new Error(`${busy.host || '有人'} 已經開了${busy.kind === 'drink' ? '飲料' : '點心'}團，重新整理看看`)
         if (prev && prev.shop !== draft.shop && db.orders.some((o) => o.weekId === draft.id)) throw new Error('已經有人點了，不能換店家')
-        const week: Week = { ...draft, createdAt: prev?.createdAt ?? now, updatedAt: now }
+        if (!prev && roundPassword.trim()) db.passwords = { ...db.passwords, [draft.id]: roundPassword.trim() }
+        const week: Week = { ...draft, owner: prev ? prev.owner : draft.owner?.trim(), hasPassword: !!db.passwords?.[draft.id], createdAt: prev?.createdAt ?? now, updatedAt: now }
         db.weeks = prev ? db.weeks.map((w) => (w.id === week.id ? week : w)) : [...db.weeks, week]
         save(db)
         return week
@@ -133,9 +143,11 @@ export function createDemoApi(): Api {
         save(db)
         return db.shops!
       },
-      async deleteOrder(_pw, orderId) {
+      async deleteOrder(_pw, orderId, roundPassword) {
         await wait()
         const db = load()
+        const order = db.orders.find((o) => o.id === orderId)
+        if (order) checkPassword(db, order.weekId, roundPassword)
         db.orders = db.orders.filter((o) => o.id !== orderId)
         save(db)
       },

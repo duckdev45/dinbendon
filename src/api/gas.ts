@@ -31,9 +31,9 @@ export function createGasApi(url: string): Api {
       verify: (password) => call<void>('adminVerify', { password }),
       listWeeks: (password) => call<{ weeks: Week[]; latest: Snapshot; shops?: ShopRow[] }>('adminListWeeks', { password }),
       getWeek: (password, weekId) => call<Snapshot>('adminGetWeek', { password, weekId }),
-      saveWeek: (password, week) => call<Week>('adminSaveWeek', { password, week }),
+      saveWeek: (password, week, roundPassword) => call<Week>('adminSaveWeek', { password, week, roundPassword }),
       uploadImage: (password, dataUrl, filename) => call<string>('adminUploadImage', { password, dataUrl, filename }),
-      deleteOrder: (password, orderId) => call<void>('adminDeleteOrder', { password, orderId }),
+      deleteOrder: (password, orderId, roundPassword) => call<void>('adminDeleteOrder', { password, orderId, roundPassword }),
       saveShop: (password, shop, from) => call<ShopRow[]>('adminSaveShop', { password, shop, from }),
     },
   }

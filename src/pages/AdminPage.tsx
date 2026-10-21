@@ -1,11 +1,12 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {api} from '../api'
+import {useConfirm} from '../components/Confirm'
 import {SlotMachine} from '../components/SlotMachine'
 import {useToast} from '../components/Toast'
 import {exportExcel} from '../lib/excel'
 import {shrinkImage, uid} from '../lib/image'
 import {MAX_PRICE, presets} from '../shops'
-import {currentRounds, isBonus} from '../lib/drink'
+import {currentRounds, endsEarly, isBonus, statsPick} from '../lib/drink'
 import {computeStats, drinkSummary, orderLabel, orderPrice, shopText} from '../lib/stats'
 import {
     defaultDeadline,
@@ -29,6 +30,11 @@ type Tab = 'menu' | 'drink' | 'snack' | 'stats'
 const UNIT = {bento: '便當', drink: '飲料', snack: '點心'} as const
 const ICON = {bento: 'bowl', drink: 'boba', snack: 'wheel'} as const
 
+type Ask = ReturnType<typeof useConfirm>['ask']
+
+/** 要密碼的確認卡片底下的提示 */
+const pwHint = (owner = '') => `訂單需要密碼才能修改，請聯絡負責人${owner ? ' ' + owner : ''}`
+
 const TAB = 'cursor-pointer px-5 py-2 whitespace-nowrap text-soy aria-selected:bg-soy aria-selected:text-yolk max-md:flex-1 max-md:px-2'
 
 function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToast> }) {
@@ -41,6 +47,7 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
     const [weeks, setWeeks] = useState<Week[] | null>(null)
     const [latest, setLatest] = useState<Snapshot | null>(null)
     const [shopRows, setShopRows] = useState<ShopRow[]>([])
+    const {ask, node: confirmNode} = useConfirm()
     const shops = useMemo(() => presets(kind, weeks ?? [], shopRows), [kind, weeks, shopRows])
 
     const loadWeeks = useCallback(async () => {
@@ -62,6 +69,7 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
     return (
         <main className="page">
             {toast.node}
+            {confirmNode}
             <div className="mt-2 mb-6 flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-[1.8rem]">訂單管理</h1>
                 <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:flex max-md:w-full"
@@ -85,6 +93,7 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                     key={`${tab}-${currentRounds(weeks)[kind]?.id ?? 'new'}`}
                     kind={kind}
                     shops={shops}
+                    ask={ask}
                     pw={pw}
                     // 飲料團、點心團只接著編收單中的那團，截止了就開新的
                     current={currentRounds(weeks)[kind]}
@@ -93,10 +102,10 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                         await loadWeeks()
                     }}
                 />
-                <ShopShelf key={kind} kind={kind} shops={shops} pw={pw} toast={toast} onSaved={setShopRows}/>
+                <ShopShelf key={kind} kind={kind} shops={shops} ask={ask} pw={pw} toast={toast} onSaved={setShopRows}/>
                 </>
             ) : (
-                <StatsPanel pw={pw} weeks={weeks} initial={latest} toast={toast} onEmpty={() => setTab('menu')}/>
+                <StatsPanel pw={pw} weeks={weeks} initial={latest} ask={ask} toast={toast} onEmpty={() => setTab('menu')}/>
             )}
         </main>
     )
@@ -109,19 +118,20 @@ const drinkDeadline = () => new Date(Date.now() + 3600_000).toISOString()
 
 function blankDraft(kind: RoundKind): WeekDraft {
     const deadline = isBonus(kind) ? drinkDeadline() : defaultDeadline()
-    // 飲料團、點心團預設由自己開（點餐頁記住的名字）、抖內
-    let host = ''
+    // 負責人、飲料團點心團請客的人預設都是自己（點餐頁記住的名字），預設抖內
+    let me = ''
     try {
-        host = isBonus(kind) ? localStorage.getItem('dinbendon:name') ?? '' : ''
+        me = localStorage.getItem('dinbendon:name') ?? ''
     } catch {
         /* ignore */
     }
-    return {id: uid('w_'), kind, shop: '', imageUrl: '', deadline, items: [], addons: [], host, mode: 'treat'}
+    return {id: uid('w_'), kind, shop: '', imageUrl: '', deadline, items: [], addons: [], host: isBonus(kind) ? me : '', owner: me, mode: 'treat'}
 }
 
 function MenuEditor({
                         kind,
                         shops,
+                        ask,
                         pw,
                         current,
                         toast,
@@ -130,6 +140,7 @@ function MenuEditor({
     kind: RoundKind
     /** 常用店家（內建＋開過的團＋手動維護的） */
     shops: ShopPreset[]
+    ask: Ask
     pw: string
     current: Week | null
     toast: ReturnType<typeof useToast>
@@ -142,6 +153,8 @@ function MenuEditor({
     // 舊後端的資料沒有 addons，補空陣列
     const [draft, setDraft] = useState<WeekDraft>(() => (current ? {...current, addons: current.addons ?? []} : blankDraft(kind)))
     const [isNew, setIsNew] = useState(!current)
+    // 開團密碼：開新團時設定，之後刪訂單、提早結束要輸入
+    const [roundPw, setRoundPw] = useState('')
     // 便當、點心：已經有人點了就不能換店家（null = 還在查）
     const [ordered, setOrdered] = useState<number | null>(null)
     useEffect(() => {
@@ -156,8 +169,8 @@ function MenuEditor({
     const fileRef = useRef<HTMLInputElement>(null)
 
     const set = <K extends keyof WeekDraft>(k: K, v: WeekDraft[K]) => setDraft((d) => ({...d, [k]: v}))
-    function startNewWeek() {
-        if (!window.confirm(`開新的一週會建立一份新菜單，之前的訂單仍然保留在「訂單統計」。要繼續嗎？`)) return
+    async function startNewWeek() {
+        if ((await ask('開新的一週會建立一份新菜單，\n之前的訂單仍然保留在「訂單統計」。', {ok: '開新的一週'})) === null) return
         // 店家通常不常換，把店名和品項帶過來，負責人只要改不一樣的地方
         setDraft({
             ...blankDraft(kind),
@@ -222,10 +235,11 @@ function MenuEditor({
 
     /** 飲料、點心流團：把截止時間改成現在，大家的畫面就不會再跳出來；訂單留在統計裡 */
     async function closeDrink() {
-        if (!window.confirm('流團？關掉後大家就不能再點，已經點的會留在「訂單統計」。')) return
+        const input = await ask('流團？關掉後大家就不能再點，\n已經點的會留在「訂單統計」。', {ok: '流團', password: !!current?.hasPassword, hint: pwHint(current?.owner)})
+        if (input === null) return
         setSaving(true)
         try {
-            await api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()})
+            await api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()}, input)
             toast.show(`${unit}團已關閉`, 'ok', ICON[kind])
             await onSaved()
         } catch (e) {
@@ -238,18 +252,27 @@ function MenuEditor({
     async function save() {
         const tidy = (list: MenuItem[]) => list.map((it) => ({...it, name: it.name.trim()})).filter((it) => it.name)
         const items = tidy(draft.items)
-        if (bonus && !draft.host.trim()) return toast.show('填一下你的名字，大家才知道誰開的團', 'error')
+        if (bonus && !draft.host.trim()) return toast.show(draft.mode === 'group' ? '填一下誰揪的團' : '填一下誰請客', 'error')
+        if (isNew && !draft.owner?.trim()) return toast.show('填一下負責人，有問題大家才知道要找誰', 'error')
         if (!draft.shop.trim()) return toast.show(drink ? '先拉一下拉霸，抽今天喝哪家' : '填一下店家名稱', 'error')
         if (items.length === 0) return toast.show(`至少要有一種${unit}`, 'error')
         const over = bonus ? [] : items.filter((it) => it.price > MAX_PRICE)
         if (over.length) return toast.show(`便當不能超過 $${MAX_PRICE}：${over.map((it) => it.name).join('、')}`, 'error')
+        if (isNew && !roundPw.trim()) return toast.show('設一組開團密碼，刪訂單、提早結束要用', 'error')
+        // 把截止時間改到現在以前＝提早結束，一樣要密碼
+        let input = roundPw
+        if (!isNew && endsEarly(current, draft.deadline)) {
+            const v = await ask('截止時間已經過了，存檔後這團就結束了。', {ok: '結束這團', password: true, hint: pwHint(current?.owner)})
+            if (v === null) return
+            input = v
+        }
         setSaving(true)
         try {
             // 舊版 Code.gs 會把點心團存成便當、蓋掉這週菜單，存之前先確認後端認得點心團（新版 getCurrent 一定有 snack）
             if (kind === 'snack' && isNew && !('snack' in (await api.getCurrent()))) {
                 throw new Error('後端 Code.gs 是舊版，請先貼上新版並部署，再開點心團')
             }
-            const saved = await api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), items, addons: tidy(draft.addons)})
+            const saved = await api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), owner: draft.owner?.trim(), items, addons: tidy(draft.addons)}, input)
             // 舊版 Code.gs 不認得飲料團、點心團，會存成便當蓋掉這週菜單
             if (saved.kind !== kind) throw new Error(`後端 Code.gs 是舊版，請先貼上新版並部署，再開${unit}團`)
             setDraft(saved)
@@ -269,10 +292,10 @@ function MenuEditor({
         <div>
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 {bonus && isNew ? (
-                    // 誰開的團＋抖內（請大家喝）還是揪團（各付各的）
+                    // 誰請客／誰揪的＋抖內（請大家喝）還是揪團（各付各的）；負責人可能是別人，在下面跟密碼一起填
                     <div className="flex flex-wrap items-end gap-3">
                         <label className="field w-48">
-                            <span className="field-label">你的名字</span>
+                            <span className="field-label">{draft.mode === 'group' ? '誰揪的團' : '誰請客'}</span>
                             <input value={draft.host} onChange={(e) => set('host', e.target.value)} maxLength={20}/>
                         </label>
                         <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm" role="radiogroup" aria-label="抖內還是揪團">
@@ -291,6 +314,7 @@ function MenuEditor({
                         : bonus
                             ? `${draft.host} 的${draft.mode === 'group' ? '揪團' : '抖內'}・${formatDeadline(draft.deadline)}截止`
                             : `正在編輯 ${formatDay(draft.deadline)}截止的菜單`}
+                    {!isNew && draft.owner && `・負責人 ${draft.owner}`}
                     {!isNew && isClosed(draft.deadline) && <span className="pill text-stamp-dark">已截止</span>}
                 </p>
                 )}
@@ -384,6 +408,22 @@ function MenuEditor({
                             </span>
                         )}
                     </label>
+                    {isNew && (
+                        // 負責人和開團密碼一起填：刪訂單、提早結束要密碼，忘了就找負責人
+                        <div className="flex flex-col gap-1.5">
+                            <div className="grid grid-cols-2 gap-3">
+                                <label className="field">
+                                    <span className="field-label">負責人</span>
+                                    <input value={draft.owner ?? ''} onChange={(e) => set('owner', e.target.value)} maxLength={20}/>
+                                </label>
+                                <label className="field">
+                                    <span className="field-label">開團密碼</span>
+                                    <input value={roundPw} onChange={(e) => setRoundPw(e.target.value)} autoComplete="off" maxLength={40} placeholder="負責人記得就好"/>
+                                </label>
+                            </div>
+                            <span className="text-sm text-soy-soft">刪訂單、提早結束要輸入密碼；開團後兩個都不能改。</span>
+                        </div>
+                    )}
                 </section>
 
                 <section className="card col-span-full flex flex-col gap-3.5">
@@ -437,9 +477,10 @@ function MenuEditor({
 type ShopDraft = { from: string; shop: string; imageUrl: string; items: MenuItem[]; addons: MenuItem[] }
 
 /** 每個分頁底下維護常用店家：點一家改菜單、改名、刪掉，或新增一家；開過的團會自動算進來 */
-function ShopShelf({kind, shops, pw, toast, onSaved}: {
+function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
     kind: RoundKind
     shops: ShopPreset[]
+    ask: Ask
     pw: string
     toast: ReturnType<typeof useToast>
     onSaved: (rows: ShopRow[]) => void
@@ -468,7 +509,7 @@ function ShopShelf({kind, shops, pw, toast, onSaved}: {
         } else {
             // 拉霸沒店家可抽會壞掉
             if (drink && shops.length <= 1) return toast.show('拉霸至少要留一家', 'error')
-            if (!window.confirm(`從常用店家刪掉「${shop}」？開過的團和訂單不受影響。`)) return
+            if ((await ask(`從常用店家刪掉「${shop}」？\n開過的團和訂單不受影響。`, {ok: '刪掉'})) === null) return
         }
         setBusy(true)
         try {
@@ -609,18 +650,21 @@ function StatsPanel({
                         pw,
                         weeks,
                         initial,
+                        ask,
                         toast,
                         onEmpty,
                     }: {
     pw: string
     weeks: Week[]
-    /** listWeeks 順帶回來的最新一團，先顯示，背景再刷新 */
+    /** listWeeks 順帶回來的預設那團（statsPick），先顯示，背景再刷新 */
     initial: Snapshot | null
+    ask: Ask
     toast: ReturnType<typeof useToast>
     onEmpty: () => void
 }) {
-    const [weekId, setWeekId] = useState(weeks[0]?.id ?? '')
-    const [snap, setSnap] = useState<Snapshot | null>(initial)
+    const [weekId, setWeekId] = useState(statsPick(weeks)?.id ?? '')
+    // 舊版 Code.gs 回的是最新一團，跟預設不同團就不要先顯示
+    const [snap, setSnap] = useState<Snapshot | null>(initial?.week?.id === weekId ? initial : null)
     const [exporting, setExporting] = useState(false)
 
     const load = useCallback(async () => {
@@ -676,9 +720,10 @@ function StatsPanel({
     }
 
     async function remove(id: string, label: string) {
-        if (!window.confirm(`刪除 ${label} 的訂單？`)) return
+        const input = await ask(`刪除 ${label} 的訂單？`, {ok: '刪除', password: !!week?.hasPassword, hint: pwHint(week?.owner)})
+        if (input === null) return
         try {
-            await api.admin.deleteOrder(pw, id)
+            await api.admin.deleteOrder(pw, id, input)
             toast.show('訂單已刪除')
             load()
         } catch (e) {

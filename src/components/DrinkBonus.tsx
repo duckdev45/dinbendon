@@ -5,6 +5,7 @@ import {normName, orderLabel, orderPrice, personLine} from '../lib/stats'
 import type {Order, Snapshot, Week} from '../types'
 import {BobaCup} from './BobaCup'
 import {ShopLogo} from './ShopLogo'
+import type {useConfirm} from './Confirm'
 import type {useToast} from './Toast'
 import {WheelCake} from './WheelCake'
 
@@ -42,6 +43,7 @@ export function DrinkBonus({
                                setName,
                                onChange,
                                toast,
+                               ask,
                                autoOpen = true,
                            }: {
     bonus: Snapshot & { week: Week }
@@ -51,6 +53,7 @@ export function DrinkBonus({
     setName: (name: string) => void
     onChange: () => Promise<void>
     toast: ReturnType<typeof useToast>
+    ask: ReturnType<typeof useConfirm>['ask']
 }) {
     const {week, orders} = bonus
     const drink = week.kind === 'drink'
@@ -117,7 +120,7 @@ export function DrinkBonus({
     }
 
     async function cancel() {
-        if (!mine || !window.confirm(`確定不${eat} ${mine.itemName} 了？`)) return
+        if (!mine || (await ask(`確定不${eat} ${mine.itemName} 了？`, {ok: `不${eat}了`})) === null) return
         setBusy(true)
         try {
             await api.cancelOrder(week.id, mine.name)
