@@ -63,24 +63,19 @@ export function OrderPage() {
         }
     }, [privId, secret])
 
-    // 還沒輸入過通關密碼就問；錯了再問，按取消就算了
+    // 還沒輸入過通關密碼就問；錯了卡片上變紅再打，按 X 就算了
     useEffect(() => {
         if (!privId || secret) return
-        ;(async () => {
-            for (;;) {
-                const v = await ask('喝飲料、吃點心不揪？\n輸入通關密碼才看得到', {ok: '進去', password: true, label: '通關密碼', icon: <LockIcon size={56}/>})
-                if (v === null) return
-                try {
-                    const round = await api.getRound(privId, v.trim())
-                    if (round.week && isClosed(round.week.deadline)) toast.show('這團已經截止囉', 'error')
-                    keep(secretKey(privId), v.trim())
-                    setPriv(round)
-                    return setSecret(v.trim())
-                } catch (e) {
-                    toast.show((e as Error).message, 'error')
-                }
-            }
-        })()
+        ask('喝飲料、吃點心不揪？\n輸入通關密碼才看得到', {
+            password: true, label: '通關密碼', icon: <LockIcon size={56}/>,
+            check: async (v) => {
+                const round = await api.getRound(privId, v)
+                if (round.week && isClosed(round.week.deadline)) toast.show('這團已經截止囉', 'error')
+                keep(secretKey(privId), v)
+                setPriv(round)
+                setSecret(v)
+            },
+        })
     }, [privId, secret]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // 進來載一次、每 30 秒、切回分頁時再抓，名單會跟著更新

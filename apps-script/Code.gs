@@ -177,8 +177,7 @@ var ACTIONS = {
       // 喝飲料不揪：開團時設通關密碼，之後不能改；便當不行
       var secret = hit >= 0 ? rows[hit].secret : '';
       if (hit < 0 && w.private && kind !== 'bento') {
-        if (!String(p.secret || '').trim()) throw new Error((kind === 'snack' ? '吃點心不揪' : '喝飲料不揪') + '要設通關密碼'); // 跟前端 secretName 一樣
-        secret = hash_(p.secret);
+        secret = digits_(p.secret, (kind === 'snack' ? '吃點心不揪' : '喝飲料不揪') + '通關密碼'); // 跟前端 secretName 一樣
       }
       // 同一種限時團同時只能有一團收單中（跟前端 src/lib/drink.ts openConflict 一樣），不然新的會把還在收單的那團擠掉；喝飲料不揪不算
       if (kind !== 'bento' && !secret) {
@@ -200,8 +199,8 @@ var ACTIONS = {
         addons: JSON.stringify(kind === 'drink' ? (w.addons || []).map(clean) : []),
         host: kind !== 'bento' ? String(w.host || '').trim().slice(0, 20) : '', // 飲料團、點心團誰請客／誰揪的
         mode: w.mode === 'group' ? 'group' : 'treat', // 飲料團、點心團：treat 抖內、group 揪團
-        // 只存雜湊；開團時沒帶密碼（舊版前端）就不設，之後也不能補
-        password: hit >= 0 ? rows[hit].password : (String(p.roundPassword || '').trim() ? hash_(p.roundPassword) : ''),
+        // 明碼存（忘了可以來試算表查）；開團時沒帶密碼（舊版前端）就不設，之後也不能補
+        password: hit >= 0 ? rows[hit].password : (String(p.roundPassword || '').trim() ? digits_(p.roundPassword, '開團密碼') : ''),
         // 負責人跟密碼一起在開團時填，之後不能改
         owner: hit >= 0 ? rows[hit].owner : String(w.owner || '').trim().slice(0, 20),
         secret: secret,
@@ -302,7 +301,7 @@ function pairs_(list) {
     .filter(function (x) { return x[0]; }));
 }
 
-// 試算表原始那列（有密碼雜湊），回前端前要 castWeek_
+// 試算表原始那列（有密碼），回前端前要 castWeek_
 function findRow_(id) {
   return readRows_(sheet_('weeks'), WEEK_COLS).filter(function (r) { return r.id === id; })[0] || null;
 }
@@ -329,7 +328,7 @@ function castWeek_(r) {
   return {
     id: r.id, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'bento', shop: r.shop, imageUrl: r.imageUrl, deadline: r.deadline,
     items: castItems_(r.items), addons: castItems_(r.addons), host: r.host || '', mode: r.mode === 'group' ? 'group' : 'treat',
-    owner: r.owner || '', hasPassword: !!r.password, private: !!r.secret, // 密碼雜湊不回傳
+    owner: r.owner || '', hasPassword: !!r.password, private: !!r.secret, // 密碼不回傳
     createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
@@ -408,7 +407,20 @@ function withLock_(fn) {
   }
 }
 
-// 開團密碼只存 SHA-256；舊團沒設（空字串）就不檢查
+// 開團密碼、通關密碼只能是數字，明碼存；欄位是純文字格式，開頭的 0 不會掉
+function digits_(s, label) {
+  var v = String(s || '').trim();
+  if (!/^\d{1,12}$/.test(v)) throw new Error(label + '只能是數字');
+  return v;
+}
+
+// 明碼或舊團的 SHA-256 雜湊都認；沒設（空字串）就不檢查
+function same_(stored, input) {
+  var v = String(input || '').trim();
+  return stored === v || stored === hash_(v);
+}
+
+// ponytail: 只剩舊團的雜湊比對在用，舊團都結束後可刪
 function hash_(s) {
   var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'dinbendon|' + String(s || '').trim(), Utilities.Charset.UTF_8);
   return Utilities.base64Encode(bytes);
@@ -416,11 +428,11 @@ function hash_(s) {
 
 // 喝飲料不揪的通關密碼；公開團（空字串）不檢查
 function checkSecret_(row, input) {
-  if (row && row.secret && row.secret !== hash_(input)) throw new Error('通關密碼不對，問一下揪你的人');
+  if (row && row.secret && !same_(row.secret, input)) throw new Error('通關密碼不對，問一下揪你的人');
 }
 
 function checkPassword_(row, input) {
-  if (row.password && row.password !== hash_(input)) throw new Error('密碼不對，請聯絡負責人' + (row.owner ? ' ' + row.owner : ''));
+  if (row.password && !same_(row.password, input)) throw new Error('密碼不對，請聯絡負責人' + (row.owner ? ' ' + row.owner : ''));
 }
 
 // 跟前端 src/lib/drink.ts bentoGone 一樣：截止那天 17:30（台北）和截止時間取晚的

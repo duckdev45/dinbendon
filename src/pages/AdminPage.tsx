@@ -60,14 +60,13 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
     const managing = listed ? {...priv!, week: {...listed, host: priv!.week.host, owner: priv!.week.owner}} : null
 
     async function manage(w: Week) {
-        const v = await ask(`${secretName(w.kind)}\n輸入通關密碼才能管理這團`, {ok: '管理', password: true, label: '通關密碼', icon: <LockIcon size={56}/>})
-        if (v === null) return
-        try {
-            const {week} = await api.admin.getWeek(pw, w.id, v.trim())
-            if (week) setPriv({week, secret: v.trim()})
-        } catch (e) {
-            toast.show((e as Error).message, 'error')
-        }
+        await ask(`${secretName(w.kind)}\n輸入通關密碼才能管理這團`, {
+            password: true, label: '通關密碼', icon: <LockIcon size={56}/>,
+            check: async (v) => {
+                const {week} = await api.admin.getWeek(pw, w.id, v)
+                if (week) setPriv({week, secret: v})
+            },
+        })
     }
 
     const loadWeeks = useCallback(async () => {
@@ -307,18 +306,13 @@ function MenuEditor({
 
     /** 飲料、點心流團：把截止時間改成現在，大家的畫面就不會再跳出來；訂單留在統計裡 */
     async function closeDrink() {
-        const input = await ask('流團？關掉後大家就不能再點，\n已經點的會留在「訂單統計」。', {ok: '流團', password: !!draft.hasPassword, hint: pwHint(draft.owner)})
+        const input = await ask('流團？關掉後大家就不能再點，\n已經點的會留在「訂單統計」。', {
+            ok: '流團', password: !!draft.hasPassword, hint: pwHint(draft.owner),
+            check: (v) => api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()}, v, secret),
+        })
         if (input === null) return
-        setSaving(true)
-        try {
-            await api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()}, input, secret)
-            toast.show(`${unit}團已關閉`, 'ok', ICON[kind])
-            await onSaved()
-        } catch (e) {
-            toast.show((e as Error).message, 'error')
-        } finally {
-            setSaving(false)
-        }
+        toast.show(`${unit}團已關閉`, 'ok', ICON[kind])
+        await onSaved()
     }
 
     async function save() {
@@ -336,12 +330,12 @@ function MenuEditor({
         if (items.length === 0) return toast.show(`至少要有一種${unit}`, 'error')
         const over = bonus ? [] : items.filter((it) => it.price > MAX_PRICE)
         if (over.length) return toast.show(`便當不能超過 $${MAX_PRICE}：${over.map((it) => it.name).join('、')}`, 'error')
-        // 把截止時間改到現在以前＝提早結束，一樣要密碼
-        let input = roundPw
+        const persist = (input: string) => api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), owner: draft.owner?.trim(), items, addons: tidy(draft.addons)}, input, secret)
+        let saved: Week | undefined
+        // 把截止時間改到現在以前＝提早結束，一樣要密碼；密碼對了就直接存掉
         if (!isNew && endsEarly(current, draft.deadline)) {
-            const v = await ask('截止時間已經過了，存檔後這團就結束了。', {ok: '結束這團', password: true, hint: pwHint(current?.owner)})
+            const v = await ask('截止時間已經過了，存檔後這團就結束了。', {password: true, hint: pwHint(current?.owner), check: async (v) => (saved = await persist(v))})
             if (v === null) return
-            input = v
         }
         setSaving(true)
         try {
@@ -349,7 +343,7 @@ function MenuEditor({
             if (kind === 'snack' && isNew && !('snack' in (await api.getCurrent()))) {
                 throw new Error('後端 Code.gs 是舊版，請先貼上新版並部署，再開點心團')
             }
-            const saved = await api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), owner: draft.owner?.trim(), items, addons: tidy(draft.addons)}, input, secret)
+            saved ??= await persist(roundPw)
             // 舊版 Code.gs 不認得飲料團、點心團，會存成便當蓋掉這週菜單
             if (saved.kind !== kind) throw new Error(`後端 Code.gs 是舊版，請先貼上新版並部署，再開${unit}團`)
             setDraft(saved)
@@ -560,10 +554,10 @@ function MenuEditor({
                                 </label>
                                 <label className="field">
                                     <span className="field-label req">開團密碼</span>
-                                    <input value={roundPw} onChange={(e) => setRoundPw(e.target.value)} autoComplete="off" maxLength={40} placeholder="負責人記得就好"/>
+                                    <input value={roundPw} onChange={(e) => setRoundPw(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="off" maxLength={12} placeholder="負責人記得就好"/>
                                 </label>
                             </div>
-                            <span className="text-sm text-soy-soft">刪訂單、提早結束要輸入密碼；開團後兩個都不能改。</span>
+                            <span className="text-sm text-soy-soft">密碼只能是數字。刪訂單、提早結束要輸入密碼；開團後兩個都不能改。</span>
                         </div>
                     )}
                     {isNew && bonus && (
@@ -577,7 +571,7 @@ function MenuEditor({
                             {draft.private && (
                                 <label className="field">
                                     <span className="field-label req">通關密碼</span>
-                                    <input value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" maxLength={40} placeholder="給要揪的人"/>
+                                    <input value={secret} onChange={(e) => setSecret(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="off" maxLength={12} placeholder="給要揪的人"/>
                                 </label>
                             )}
                             <span className="text-sm text-soy-soft">
@@ -845,12 +839,19 @@ function StatsPanel({
         let secret = secrets.current[weekId] ?? ''
         const w = weeks.find((x) => x.id === weekId)
         if (w?.private && !secret) {
-            const v = await ask(`${secretName(w.kind)}\n輸入通關密碼才看得到訂單`, {ok: '查看', password: true, label: '通關密碼', icon: <LockIcon size={56}/>})
+            const v = await ask(`${secretName(w.kind)}\n輸入通關密碼才看得到訂單`, {
+                password: true, label: '通關密碼', icon: <LockIcon size={56}/>,
+                check: async (v) => {
+                    setSnap(await api.admin.getWeek(pw, weekId, v))
+                    secrets.current[weekId] = v
+                    setLocked(false)
+                },
+            })
             if (v === null) {
                 setSnap(null)
-                return setLocked(true)
+                setLocked(true)
             }
-            secret = v.trim()
+            return
         }
         try {
             setSnap(await api.admin.getWeek(pw, weekId, secret))
@@ -910,15 +911,10 @@ function StatsPanel({
     }
 
     async function remove(id: string, label: string) {
-        const input = await ask(`刪除 ${label} 的訂單？`, {ok: '刪除', password: !!week?.hasPassword, hint: pwHint(week?.owner)})
+        const input = await ask(`刪除 ${label} 的訂單？`, {ok: '刪除', password: !!week?.hasPassword, hint: pwHint(week?.owner), check: (v) => api.admin.deleteOrder(pw, id, v)})
         if (input === null) return
-        try {
-            await api.admin.deleteOrder(pw, id, input)
-            toast.show('訂單已刪除')
-            load()
-        } catch (e) {
-            toast.show((e as Error).message, 'error')
-        }
+        toast.show('訂單已刪除')
+        load()
     }
 
     return (
