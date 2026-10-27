@@ -108,6 +108,8 @@ export interface Api {
     uploadImage(password: string, dataUrl: string, filename: string): Promise<string>
     /** 那團有設開團密碼就要帶 */
     deleteOrder(password: string, orderId: string, roundPassword?: string): Promise<void>
+    /** 整團刪掉（菜單＋訂單）；開團密碼、喝飲料不揪的通關密碼有設就要帶 */
+    deleteWeek(password: string, weekId: string, roundPassword?: string, secret?: string): Promise<void>
     /** 新增、修改、刪除（hidden）常用店家；from = 改名前的店名。回傳整份 shops */
     saveShop(password: string, shop: Omit<ShopRow, 'updatedAt'>, from?: string): Promise<ShopRow[]>
   }

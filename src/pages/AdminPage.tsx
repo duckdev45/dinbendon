@@ -91,9 +91,11 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
             {confirmNode}
             <div className="mt-2 mb-6 flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-[1.8rem]">訂單管理</h1>
-                <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:flex max-md:w-full"
-                     role="tablist">
-                    <button role="tab" className={TAB} aria-selected={tab === 'stats'} onClick={() => (setTab('stats'), setPriv(null))}>
+                <div
+                    className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:flex max-md:w-full"
+                    role="tablist">
+                    <button role="tab" className={TAB} aria-selected={tab === 'stats'}
+                            onClick={() => (setTab('stats'), setPriv(null))}>
                         訂單統計
                     </button>
                     {(['menu', 'drink', 'snack'] as const).map((t) => (
@@ -108,39 +110,44 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                 <p className="text-soy-soft">載入中…</p>
             ) : tab !== 'stats' ? (
                 <>
-                {privList.length > 0 && (
-                    <div className="mb-4 flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 font-bold"><LockIcon size={18}/>收單中的{secretName(kind)}</span>
-                        {privList.map((w) => (
-                            <button key={w.id} className={`btn ${managing?.week.id === w.id ? 'btn-primary' : 'btn-ghost'}`}
-                                    onClick={() => manage(w)} disabled={managing?.week.id === w.id}>
-                                {w.shop || '未命名'}・{formatDeadline(w.deadline)}截止
-                            </button>
-                        ))}
-                        {managing && <button className="link-btn" onClick={() => setPriv(null)}>回到公開的團</button>}
-                    </div>
-                )}
-                <MenuEditor
-                    key={`${tab}-${managing?.week.id ?? currentRounds(weeks)[kind]?.id ?? 'new'}`}
-                    kind={kind}
-                    shops={shops}
-                    ask={ask}
-                    pw={pw}
-                    // 飲料團、點心團只接著編收單中的那團，截止了就開新的
-                    current={managing?.week ?? currentRounds(weeks)[kind]}
-                    secret={managing?.secret}
-                    invite={managing?.fresh}
-                    // 開好的喝飲料不揪換成管理那團，不然編輯器還掛著原本公開的團（店家鎖、提早結束的密碼會對錯團）
-                    onCreatedPrivate={(week, secret) => setPriv({week, secret, fresh: true})}
-                    toast={toast}
-                    onSaved={async () => {
-                        await loadWeeks()
-                    }}
-                />
-                <ShopShelf key={kind} kind={kind} shops={shops} ask={ask} pw={pw} toast={toast} onSaved={setShopRows}/>
+                    {privList.length > 0 && (
+                        <div className="mb-4 flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1 font-bold"><LockIcon
+                                size={18}/>收單中的{secretName(kind)}</span>
+                            {privList.map((w) => (
+                                <button key={w.id}
+                                        className={`btn ${managing?.week.id === w.id ? 'btn-primary' : 'btn-ghost'}`}
+                                        onClick={() => manage(w)} disabled={managing?.week.id === w.id}>
+                                    {w.shop || '未命名'}・{formatDeadline(w.deadline)}截止
+                                </button>
+                            ))}
+                            {managing &&
+                                <button className="link-btn" onClick={() => setPriv(null)}>回到公開的團</button>}
+                        </div>
+                    )}
+                    <MenuEditor
+                        key={`${tab}-${managing?.week.id ?? currentRounds(weeks)[kind]?.id ?? 'new'}`}
+                        kind={kind}
+                        shops={shops}
+                        ask={ask}
+                        pw={pw}
+                        // 飲料團、點心團只接著編收單中的那團，截止了就開新的
+                        current={managing?.week ?? currentRounds(weeks)[kind]}
+                        secret={managing?.secret}
+                        invite={managing?.fresh}
+                        // 開好的喝飲料不揪換成管理那團，不然編輯器還掛著原本公開的團（店家鎖、提早結束的密碼會對錯團）
+                        onCreatedPrivate={(week, secret) => setPriv({week, secret, fresh: true})}
+                        toast={toast}
+                        onSaved={async () => {
+                            await loadWeeks()
+                        }}
+                    />
+                    <ShopShelf key={kind} kind={kind} shops={shops} ask={ask} pw={pw} toast={toast}
+                               onSaved={setShopRows}/>
                 </>
             ) : (
-                <StatsPanel pw={pw} weeks={weeks} initial={latest} ask={ask} toast={toast} onEmpty={() => setTab('menu')}/>
+                <StatsPanel pw={pw} weeks={weeks} initial={latest} ask={ask} toast={toast}
+                            onEmpty={() => setTab('menu')}/>
             )}
         </main>
     )
@@ -160,7 +167,18 @@ function blankDraft(kind: RoundKind): WeekDraft {
     } catch {
         /* ignore */
     }
-    return {id: uid('w_'), kind, shop: '', imageUrl: '', deadline, items: [], addons: [], host: isBonus(kind) ? me : '', owner: me, mode: kind === 'drink' ? 'group' : 'treat'}
+    return {
+        id: uid('w_'),
+        kind,
+        shop: '',
+        imageUrl: '',
+        deadline,
+        items: [],
+        addons: [],
+        host: isBonus(kind) ? me : '',
+        owner: me,
+        mode: kind === 'drink' ? 'group' : 'treat'
+    }
 }
 
 function MenuEditor({
@@ -193,7 +211,10 @@ function MenuEditor({
     const bonus = isBonus(kind)
     const unit = UNIT[kind]
     // 舊後端的資料沒有 addons，補空陣列
-    const [draft, setDraft] = useState<WeekDraft>(() => (current ? {...current, addons: current.addons ?? []} : blankDraft(kind)))
+    const [draft, setDraft] = useState<WeekDraft>(() => (current ? {
+        ...current,
+        addons: current.addons ?? []
+    } : blankDraft(kind)))
     const [isNew, setIsNew] = useState(!current)
     // 開團密碼：開新團時設定，之後刪訂單、提早結束要輸入
     const [roundPw, setRoundPw] = useState('')
@@ -225,6 +246,7 @@ function MenuEditor({
     const fileRef = useRef<HTMLInputElement>(null)
 
     const set = <K extends keyof WeekDraft>(k: K, v: WeekDraft[K]) => setDraft((d) => ({...d, [k]: v}))
+
     async function startNewWeek() {
         if ((await ask('開新的一週會建立一份新菜單，\n之前的訂單仍然保留在「訂單統計」。', {ok: '開新的一週'})) === null) return
         // 店家通常不常換，把店名和品項帶過來，負責人只要改不一樣的地方
@@ -304,14 +326,31 @@ function MenuEditor({
         setIsNew(true)
     }
 
-    /** 飲料、點心流團：把截止時間改成現在，大家的畫面就不會再跳出來；訂單留在統計裡 */
-    async function closeDrink() {
-        const input = await ask('流團？關掉後大家就不能再點，\n已經點的會留在「訂單統計」。', {
-            ok: '流團', password: !!draft.hasPassword, hint: pwHint(draft.owner),
-            check: (v) => api.admin.saveWeek(pw, {...draft, deadline: new Date().toISOString()}, v, secret),
+    /** 飲料、點心流團／便當結單：把截止時間改成現在，大家就不能再點；訂單留在統計裡 */
+    async function closeRound() {
+        let closed: Week | undefined
+        const input = await ask(bonus ? '流團？關掉後大家就不能再點，\n已經點的會留在「訂單統計」。' : '現在結單？結單後大家就不能再點，\n已經點的會留在「訂單統計」。', {
+            ok: bonus ? '流團' : '結單', password: !!draft.hasPassword, hint: pwHint(draft.owner),
+            check: async (v) => (closed = await api.admin.saveWeek(pw, {
+                ...draft,
+                deadline: new Date().toISOString()
+            }, v, secret)),
         })
         if (input === null) return
-        toast.show(`${unit}團已關閉`, 'ok', ICON[kind])
+        // 便當結單後還是同一團，編輯器不會重掛，自己換成已截止
+        if (closed) setDraft(closed)
+        toast.show(bonus ? `${unit}團已關閉` : '已結單', 'ok', ICON[kind])
+        await onSaved()
+    }
+
+    /** 整團刪掉（菜單＋所有訂單），救不回來 */
+    async function deleteRound() {
+        const input = await ask(`刪除這份${unit}菜單和所有訂單？\n刪掉就救不回來了。`, {
+            ok: '刪除', password: !!draft.hasPassword, hint: pwHint(draft.owner),
+            check: (v) => api.admin.deleteWeek(pw, draft.id, v, secret),
+        })
+        if (input === null) return
+        toast.show('訂單已刪除')
         await onSaved()
     }
 
@@ -330,11 +369,22 @@ function MenuEditor({
         if (items.length === 0) return toast.show(`至少要有一種${unit}`, 'error')
         const over = bonus ? [] : items.filter((it) => it.price > MAX_PRICE)
         if (over.length) return toast.show(`便當不能超過 $${MAX_PRICE}：${over.map((it) => it.name).join('、')}`, 'error')
-        const persist = (input: string) => api.admin.saveWeek(pw, {...draft, shop: draft.shop.trim(), host: draft.host.trim(), owner: draft.owner?.trim(), items, addons: tidy(draft.addons)}, input, secret)
+        const persist = (input: string) => api.admin.saveWeek(pw, {
+            ...draft,
+            shop: draft.shop.trim(),
+            host: draft.host.trim(),
+            owner: draft.owner?.trim(),
+            items,
+            addons: tidy(draft.addons)
+        }, input, secret)
         let saved: Week | undefined
         // 把截止時間改到現在以前＝提早結束，一樣要密碼；密碼對了就直接存掉
         if (!isNew && endsEarly(current, draft.deadline)) {
-            const v = await ask('截止時間已經過了，存檔後這團就結束了。', {password: true, hint: pwHint(current?.owner), check: async (v) => (saved = await persist(v))})
+            const v = await ask('截止時間已經過了，存檔後這團就結束了。', {
+                password: true,
+                hint: pwHint(current?.owner),
+                check: async (v) => (saved = await persist(v))
+            })
             if (v === null) return
         }
         setSaving(true)
@@ -363,10 +413,12 @@ function MenuEditor({
     return (
         <div>
             {invite && (
-                <div className="fixed inset-0 z-60 grid place-items-center bg-soy/50 p-4" onClick={(e) => e.target === e.currentTarget && setInvite(false)}
+                <div className="fixed inset-0 z-60 grid place-items-center bg-soy/50 p-4"
+                     onClick={(e) => e.target === e.currentTarget && setInvite(false)}
                      onKeyDown={(e) => e.key === 'Escape' && setInvite(false)}>
-                    <div className="relative flex w-full max-w-[28rem] animate-pop flex-col items-center gap-4 rounded-card border-3 border-soy bg-rice p-6 text-center shadow-pop max-md:p-4"
-                         role="dialog" aria-label={`${secretName(kind)}開好了`}>
+                    <div
+                        className="relative flex w-full max-w-[28rem] animate-pop flex-col items-center gap-4 rounded-card border-3 border-soy bg-rice p-6 text-center shadow-pop max-md:p-4"
+                        role="dialog" aria-label={`${secretName(kind)}開好了`}>
                         <button
                             className="absolute -top-4 -right-4 size-11 cursor-pointer rounded-full border-3 border-soy bg-rice text-[1.6rem] leading-none text-soy hover:bg-stamp hover:text-rice"
                             onClick={() => setInvite(false)} aria-label="關閉"
@@ -382,7 +434,8 @@ function MenuEditor({
                         </label>
                         <div className="field w-full text-left">
                             <span className="field-label">通關密碼</span>
-                            <span className="rounded-xl border-2 border-dashed border-soy bg-yolk-soft px-4 py-2 text-center font-num text-[1.8rem] font-bold tracking-wider break-all">{secret}</span>
+                            <span
+                                className="rounded-xl border-2 border-dashed border-soy bg-yolk-soft px-4 py-2 text-center font-num text-[1.8rem] font-bold tracking-wider break-all">{secret}</span>
                         </div>
                         <button className="btn btn-primary btn-big w-full" onClick={copyInvite} autoFocus>
                             複製揪團資訊
@@ -398,9 +451,12 @@ function MenuEditor({
                             <span className="field-label req">{draft.mode === 'group' ? '誰揪的團' : '誰請客'}</span>
                             <input value={draft.host} onChange={(e) => set('host', e.target.value)} maxLength={20}/>
                         </label>
-                        <div className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm" role="radiogroup" aria-label="抖內還是揪團">
+                        <div
+                            className="inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm"
+                            role="radiogroup" aria-label="抖內還是揪團">
                             {([['treat', '抖內', drink ? '我請大家喝' : '我請大家吃'], ['group', '揪團', '各付各的']] as const).map(([m, label, hint], i) => (
-                                <button key={m} type="button" role="radio" aria-checked={draft.mode === m} onClick={() => set('mode', m)}
+                                <button key={m} type="button" role="radio" aria-checked={draft.mode === m}
+                                        onClick={() => set('mode', m)}
                                         className={`${TAB} ${i ? 'border-l-3 border-soy' : ''} aria-checked:bg-soy aria-checked:text-yolk`}>
                                     {label}<span className="ml-1.5 text-sm opacity-75">{hint}</span>
                                 </button>
@@ -408,18 +464,20 @@ function MenuEditor({
                         </div>
                     </div>
                 ) : (
-                <p className="text-[1.1rem]">
-                    {isNew
-                        ? '新的一週'
-                        : bonus
-                            ? `${draft.host} 的${draft.mode === 'group' ? '揪團' : '抖內'}・${formatDeadline(draft.deadline)}截止`
-                            : `正在編輯 ${formatDay(draft.deadline)}截止的菜單`}
-                    {!isNew && draft.owner && `・負責人 ${draft.owner}`}
-                    {!isNew && isClosed(draft.deadline) && <span className="pill text-stamp-dark">已截止</span>}
-                    {!isNew && draft.private && (
-                        <button className="link-btn ml-2 inline-flex items-center gap-1 align-middle" onClick={() => setInvite(true)}><LockIcon size={18}/>{secretName(kind)}・連結和通關密碼</button>
-                    )}
-                </p>
+                    <p className="text-[1.1rem]">
+                        {isNew
+                            ? '新的一週'
+                            : bonus
+                                ? `${draft.host} 的${draft.mode === 'group' ? '揪團' : '抖內'}・${formatDeadline(draft.deadline)}截止`
+                                : `正在編輯 ${formatDay(draft.deadline)}截止的菜單`}
+                        {!isNew && draft.owner && `・負責人 ${draft.owner}`}
+                        {!isNew && isClosed(draft.deadline) && <span className="pill text-stamp-dark">已截止</span>}
+                        {!isNew && draft.private && (
+                            <button className="link-btn ml-2 inline-flex items-center gap-1 align-middle"
+                                    onClick={() => setInvite(true)}><LockIcon size={18}/>{secretName(kind)}・連結和通關密碼
+                            </button>
+                        )}
+                    </p>
                 )}
                 {!isNew && bonus && !draft.private && (
                     <button className="btn btn-ghost inline-flex items-center gap-1.5" onClick={startPrivate}>
@@ -427,7 +485,7 @@ function MenuEditor({
                     </button>
                 )}
                 {!isNew && bonus && !isClosed(draft.deadline) && (
-                    <button className="btn btn-ghost text-stamp-dark" onClick={closeDrink} disabled={saving}>
+                    <button className="btn btn-ghost text-stamp-dark" onClick={closeRound} disabled={saving}>
                         流團，關閉這團
                     </button>
                 )}
@@ -440,41 +498,46 @@ function MenuEditor({
 
             <div className="grid grid-cols-2 gap-6 max-md:grid-cols-1">
                 {!drink && (
-                <section className="card flex flex-col gap-3.5">
-                    <h2 className="mb-0">{bonus ? <>點心照片<span className="ml-2 text-sm font-normal text-soy-soft">選填</span></> : '菜單照片'}</h2>
-                    <div
-                        className="flex min-h-[220px] flex-col items-center justify-center gap-3.5 rounded-tile border-3 border-dashed border-soy-soft bg-yolk-soft p-4 text-center">
-                        {draft.imageUrl ? (
-                            <img className="max-h-[280px] max-w-full rounded-lg border-2 border-soy"
-                                 src={draft.imageUrl} alt="菜單預覽"/>
-                        ) : (
-                            <p className="text-soy-soft">{bonus ? '拍菜單或點心照片，大家點的時候看得到' : '把店家菜單拍照上傳，大家點餐時看得到'}</p>
-                        )}
-                        <div className="flex items-center gap-4">
-                            <button className="btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                                {uploading ? '上傳中…' : draft.imageUrl ? '換一張' : '上傳圖片'}
-                            </button>
-                            {draft.imageUrl && (
-                                <button className="link-btn" onClick={() => set('imageUrl', '')}>
-                                    移除
-                                </button>
+                    <section className="card flex flex-col gap-3.5">
+                        <h2 className="mb-0">{bonus ? <>點心照片<span
+                            className="ml-2 text-sm font-normal text-soy-soft">選填</span></> : '菜單照片'}</h2>
+                        <div
+                            className="flex min-h-[220px] flex-col items-center justify-center gap-3.5 rounded-tile border-3 border-dashed border-soy-soft bg-yolk-soft p-4 text-center">
+                            {draft.imageUrl ? (
+                                <img className="max-h-[280px] max-w-full rounded-lg border-2 border-soy"
+                                     src={draft.imageUrl} alt="菜單預覽"/>
+                            ) : (
+                                <p className="text-soy-soft">{bonus ? '拍菜單或點心照片，大家點的時候看得到' : '把店家菜單拍照上傳，大家點餐時看得到'}</p>
                             )}
+                            <div className="flex items-center gap-4">
+                                <button className="btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                                    {uploading ? '上傳中…' : draft.imageUrl ? '換一張' : '上傳圖片'}
+                                </button>
+                                {draft.imageUrl && (
+                                    <button className="link-btn" onClick={() => set('imageUrl', '')}>
+                                        移除
+                                    </button>
+                                )}
+                            </div>
+                            <input ref={fileRef} type="file" accept="image/*" hidden
+                                   onChange={(e) => pickFile(e.target.files?.[0])}/>
                         </div>
-                        <input ref={fileRef} type="file" accept="image/*" hidden
-                               onChange={(e) => pickFile(e.target.files?.[0])}/>
-                    </div>
-                </section>
+                    </section>
                 )}
 
                 <section className={`card flex flex-col gap-3.5 ${drink ? 'col-span-full' : ''}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="mb-0">{drink ? <span className="req">今天喝哪家？</span> : bonus ? '今天吃哪家？' : '基本資料'}</h2>
+                        <h2 className="mb-0">{drink ?
+                            <span className="req">今天喝哪家？</span> : bonus ? '今天吃哪家？' : '基本資料'}</h2>
                         {drink && isNew && shops.length > 0 && (
                             // 膠囊開關：開 = 不拉霸，直接從下拉選
-                            <button type="button" role="switch" aria-checked={direct} aria-label="切換：不拉霸，直接選飲料店" onClick={() => setDirect(!direct)}
+                            <button type="button" role="switch" aria-checked={direct}
+                                    aria-label="切換：不拉霸，直接選飲料店" onClick={() => setDirect(!direct)}
                                     className="group inline-flex cursor-pointer items-center gap-2 rounded-full text-sm font-bold text-soy focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-bowl-blue">
-                                <span className="relative h-7 w-12 rounded-full border-3 border-soy bg-rice shadow-pop-sm motion-safe:transition-colors group-aria-checked:bg-yolk">
-                                    <span className="absolute top-[3px] left-[3px] size-4 rounded-full bg-soy motion-safe:transition-transform group-aria-checked:translate-x-5"/>
+                                <span
+                                    className="relative h-7 w-12 rounded-full border-3 border-soy bg-rice shadow-pop-sm motion-safe:transition-colors group-aria-checked:bg-yolk">
+                                    <span
+                                        className="absolute top-[3px] left-[3px] size-4 rounded-full bg-soy motion-safe:transition-transform group-aria-checked:translate-x-5"/>
                                 </span>
                                 切換
                             </button>
@@ -486,7 +549,8 @@ function MenuEditor({
                             direct && isNew ? (
                                 <label className="field">
                                     <span className="field-label">飲料店</span>
-                                    <select value={shops.some((s) => s.shop === draft.shop) ? draft.shop : ''} onChange={(e) => pickShop(e.target.value)}>
+                                    <select value={shops.some((s) => s.shop === draft.shop) ? draft.shop : ''}
+                                            onChange={(e) => pickShop(e.target.value)}>
                                         <option value="" disabled>選一家</option>
                                         {shops.map((s) => (
                                             <option key={s.shop}>{s.shop}</option>
@@ -494,32 +558,35 @@ function MenuEditor({
                                     </select>
                                 </label>
                             ) : (
-                            <SlotMachine shops={shops.map((s) => ({shop: s.shop, logo: s.imageUrl}))} value={draft.shop} onPick={pickShop} locked={!isNew}/>
+                                <SlotMachine shops={shops.map((s) => ({shop: s.shop, logo: s.imageUrl}))}
+                                             value={draft.shop} onPick={pickShop} locked={!isNew}/>
                             )
                         ) : (
                             <p className="text-soy-soft">還沒有飲料店可以抽，先到下面「常用飲料店家」新增一家。</p>
                         )
                     ) : (
-                    <>
-                    {shops.length > 0 && (
-                    <label className="field">
-                        <span className="field-label">常用店家</span>
-                        <select value={shops.some((s) => s.shop === draft.shop) ? draft.shop : ''}
-                                onChange={(e) => pickShop(e.target.value)} disabled={shopLocked}>
-                            <option value="">其他店家（自己填）</option>
-                            {shops.map((s) => (
-                                <option key={s.shop}>{s.shop}</option>
-                            ))}
-                        </select>
-                    </label>
-                    )}
-                    <label className="field">
-                        <span className="field-label req">店家名稱</span>
-                        <input value={draft.shop} onChange={(e) => set('shop', e.target.value)}
-                               placeholder={bonus ? '例如：巷口車輪餅' : '例如：阿嬤灶腳便當'} disabled={shopLocked}/>
-                        {shopLocked && <span className="text-sm text-stamp-dark">已經有 {ordered} 人點了，不能換店家；要換請{bonus ? '先流團再開新的一團' : '「開新的一週」'}。</span>}
-                    </label>
-                    </>
+                        <>
+                            {shops.length > 0 && (
+                                <label className="field">
+                                    <span className="field-label">常用店家</span>
+                                    <select value={shops.some((s) => s.shop === draft.shop) ? draft.shop : ''}
+                                            onChange={(e) => pickShop(e.target.value)} disabled={shopLocked}>
+                                        <option value="">其他店家（自己填）</option>
+                                        {shops.map((s) => (
+                                            <option key={s.shop}>{s.shop}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+                            <label className="field">
+                                <span className="field-label req">店家名稱</span>
+                                <input value={draft.shop} onChange={(e) => set('shop', e.target.value)}
+                                       placeholder={bonus ? '例如：巷口車輪餅' : '例如：阿嬤灶腳便當'}
+                                       disabled={shopLocked}/>
+                                {shopLocked && <span
+                                    className="text-sm text-stamp-dark">已經有 {ordered} 人點了，不能換店家；要換請{bonus ? '先流團再開新的一團' : '「開新的一週」'}。</span>}
+                            </label>
+                        </>
                     )}
                     <label className="field">
                         <span className="field-label req">截止時間</span>
@@ -531,33 +598,46 @@ function MenuEditor({
                         {bonus ? (
                             <span className="text-sm text-soy-soft">
                                 限時 bonus，預設開團後 1 小時。
-                                <button type="button" className="link-btn" onClick={() => set('deadline', drinkDeadline())}>
+                                <button type="button" className="link-btn"
+                                        onClick={() => set('deadline', drinkDeadline())}>
                                     改成 1 小時後
                                 </button>
                             </span>
                         ) : (
                             <span className="text-sm text-soy-soft">
-                                預設是週五 13:00。
-                                <button type="button" className="link-btn" onClick={() => set('deadline', defaultDeadline())}>
-                                    改回這週五 13:00
-                                </button>
                             </span>
                         )}
                     </label>
+                    {!isNew && !bonus && (
+                        // 結單、刪除都要開團密碼；飲料、點心用上面的「流團」
+                        <div className="flex flex-wrap justify-end gap-3">
+                            <button className="btn btn-ghost text-stamp-dark" onClick={deleteRound}
+                                    disabled={saving}>刪除訂單
+                            </button>
+                            {!isClosed(draft.deadline) && (
+                                <button className="btn btn-primary" onClick={closeRound} disabled={saving}>結單</button>
+                            )}
+                        </div>
+                    )}
                     {isNew && (
                         // 負責人和開團密碼一起填：刪訂單、提早結束要密碼，忘了就找負責人
                         <div className="flex flex-col gap-1.5">
                             <div className="grid grid-cols-2 gap-3">
                                 <label className="field">
                                     <span className="field-label req">負責人</span>
-                                    <input value={draft.owner ?? ''} onChange={(e) => set('owner', e.target.value)} maxLength={20}/>
+                                    <input value={draft.owner ?? ''} onChange={(e) => set('owner', e.target.value)}
+                                           maxLength={20}/>
                                 </label>
                                 <label className="field">
                                     <span className="field-label req">開團密碼</span>
-                                    <input value={roundPw} onChange={(e) => setRoundPw(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="off" maxLength={12} placeholder="負責人記得就好"/>
+                                    <input value={roundPw}
+                                           onChange={(e) => setRoundPw(e.target.value.replace(/\D/g, ''))}
+                                           inputMode="numeric" autoComplete="off" maxLength={12}
+                                           placeholder="負責人記得就好"/>
                                 </label>
                             </div>
-                            <span className="text-sm text-soy-soft">密碼只能是數字。刪訂單、提早結束要輸入密碼；開團後兩個都不能改。</span>
+                            <span
+                                className="text-sm text-soy-soft">密碼只能是數字。刪訂單、提早結束要輸入密碼；開團後兩個都不能改。</span>
                         </div>
                     )}
                     {isNew && bonus && (
@@ -571,7 +651,9 @@ function MenuEditor({
                             {draft.private && (
                                 <label className="field">
                                     <span className="field-label req">通關密碼</span>
-                                    <input value={secret} onChange={(e) => setSecret(e.target.value.replace(/\D/g, ''))} inputMode="numeric" autoComplete="off" maxLength={12} placeholder="給要揪的人"/>
+                                    <input value={secret} onChange={(e) => setSecret(e.target.value.replace(/\D/g, ''))}
+                                           inputMode="numeric" autoComplete="off" maxLength={12}
+                                           placeholder="給要揪的人"/>
                                 </label>
                             )}
                             <span className="text-sm text-soy-soft">
@@ -583,7 +665,8 @@ function MenuEditor({
 
                 <section className="card col-span-full flex flex-col gap-3.5">
                     <div className="flex items-baseline justify-between">
-                        <h2 className="mb-0"><span className="req">{unit}種類</span>{drink && <span className="ml-2 text-sm font-normal text-soy-soft">一律 L，填 L 的價錢</span>}</h2>
+                        <h2 className="mb-0"><span className="req">{unit}種類</span>{drink &&
+                            <span className="ml-2 text-sm font-normal text-soy-soft">一律 L，填 L 的價錢</span>}</h2>
                         {!drink && (
                             // 點心沒有內建菜單，貼一串最快
                             <button className="link-btn" onClick={() => setBulkOpen((o) => !o)}>
@@ -606,12 +689,14 @@ function MenuEditor({
                     )}
                     {draft.items.length === 0 && !bulkOpen &&
                         <p className="text-soy-soft">{drink ? '拉霸抽到店家後，飲料會自動帶進來。' : `還沒有${unit}，按下面的按鈕新增。`}</p>}
-                    <ItemRows list={draft.items} onChange={(v) => set('items', v)} unit={unit} max={bonus ? undefined : MAX_PRICE}/>
+                    <ItemRows list={draft.items} onChange={(v) => set('items', v)} unit={unit}
+                              max={bonus ? undefined : MAX_PRICE}/>
                 </section>
 
                 {drink && (
                     <section className="card col-span-full flex flex-col gap-3.5">
-                        <h2 className="mb-0">加料<span className="ml-2 text-sm font-normal text-soy-soft">每杯選一種</span></h2>
+                        <h2 className="mb-0">加料<span
+                            className="ml-2 text-sm font-normal text-soy-soft">每杯選一種</span></h2>
                         {draft.addons.length === 0 && <p className="text-soy-soft">沒有加料就留空。</p>}
                         <ItemRows list={draft.addons} onChange={(v) => set('addons', v)} unit="加料"/>
                     </section>
@@ -647,11 +732,21 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
     const [busy, setBusy] = useState(false)
     const fileRef = useRef<HTMLInputElement>(null)
     const set = <K extends keyof ShopDraft>(k: K, v: ShopDraft[K]) => setEdit((d) => d && {...d, [k]: v})
-    const toItems = (rows: [string, number][], prefix: string) => rows.map(([name, price]) => ({id: uid(prefix), name, price}))
+    const toItems = (rows: [string, number][], prefix: string) => rows.map(([name, price]) => ({
+        id: uid(prefix),
+        name,
+        price
+    }))
     const pairs = (list: MenuItem[]) => list.filter((it) => it.name.trim()).map((it): [string, number] => [it.name.trim(), it.price])
 
     function open(p?: ShopPreset) {
-        setEdit({from: p?.shop ?? '', shop: p?.shop ?? '', imageUrl: p?.imageUrl ?? '', items: toItems(p?.items ?? [], 'i_'), addons: toItems(p?.addons ?? [], 'a_')})
+        setEdit({
+            from: p?.shop ?? '',
+            shop: p?.shop ?? '',
+            imageUrl: p?.imageUrl ?? '',
+            items: toItems(p?.items ?? [], 'i_'),
+            addons: toItems(p?.addons ?? [], 'a_')
+        })
     }
 
     async function send(hidden: boolean) {
@@ -669,7 +764,12 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
         setBusy(true)
         try {
             const rows = await api.admin.saveShop(pw, {
-                kind, shop, imageUrl: edit.imageUrl, items: pairs(edit.items), addons: drink ? pairs(edit.addons) : [], hidden,
+                kind,
+                shop,
+                imageUrl: edit.imageUrl,
+                items: pairs(edit.items),
+                addons: drink ? pairs(edit.addons) : [],
+                hidden,
             }, hidden ? undefined : edit.from || undefined)
             onSaved(rows)
             setEdit(null)
@@ -697,7 +797,8 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
     return (
         <section className="card mt-6 flex flex-col gap-3.5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="mb-0">常用{unit}店家<span className="ml-2 text-sm font-normal text-soy-soft">開過的團會自動加進來</span></h2>
+                <h2 className="mb-0">常用{unit}店家<span
+                    className="ml-2 text-sm font-normal text-soy-soft">開過的團會自動加進來</span></h2>
                 {!edit && <button className="link-btn" onClick={() => open()}>+ 新增店家</button>}
             </div>
 
@@ -709,16 +810,21 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
                             <input value={edit.shop} onChange={(e) => set('shop', e.target.value)} maxLength={40}/>
                         </label>
                         <div className="flex items-center gap-3">
-                            {edit.imageUrl && <img className="size-14 rounded-lg border-2 border-soy object-cover" src={edit.imageUrl} alt=""/>}
+                            {edit.imageUrl &&
+                                <img className="size-14 rounded-lg border-2 border-soy object-cover" src={edit.imageUrl}
+                                     alt=""/>}
                             <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>
                                 {edit.imageUrl ? '換' : '上傳'}{drink ? ' logo' : '照片'}
                             </button>
-                            {edit.imageUrl && <button className="link-btn" onClick={() => set('imageUrl', '')}>移除</button>}
-                            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => pickFile(e.target.files?.[0])}/>
+                            {edit.imageUrl &&
+                                <button className="link-btn" onClick={() => set('imageUrl', '')}>移除</button>}
+                            <input ref={fileRef} type="file" accept="image/*" hidden
+                                   onChange={(e) => pickFile(e.target.files?.[0])}/>
                         </div>
                     </div>
                     <h3 className="mb-0"><span className="req">{unit}種類</span></h3>
-                    <ItemRows list={edit.items} onChange={(v) => set('items', v)} unit={unit} max={kind === 'bento' ? MAX_PRICE : undefined}/>
+                    <ItemRows list={edit.items} onChange={(v) => set('items', v)} unit={unit}
+                              max={kind === 'bento' ? MAX_PRICE : undefined}/>
                     {drink && (
                         <>
                             <h3 className="mb-0">加料</h3>
@@ -726,9 +832,11 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
                         </>
                     )}
                     <div className="flex flex-wrap items-center justify-end gap-4">
-                        {edit.from && <button className="link-btn mr-auto text-stamp-dark" onClick={() => send(true)} disabled={busy}>刪掉這家</button>}
+                        {edit.from && <button className="link-btn mr-auto text-stamp-dark" onClick={() => send(true)}
+                                              disabled={busy}>刪掉這家</button>}
                         <button className="link-btn" onClick={() => setEdit(null)} disabled={busy}>取消</button>
-                        <button className="btn btn-primary" onClick={() => send(false)} disabled={busy}>{busy ? '儲存中…' : '儲存'}</button>
+                        <button className="btn btn-primary" onClick={() => send(false)}
+                                disabled={busy}>{busy ? '儲存中…' : '儲存'}</button>
                     </div>
                 </div>
             ) : shops.length === 0 ? (
@@ -785,7 +893,8 @@ function ItemRows({list, onChange, unit, max}: {
                     </li>
                 ))}
             </ul>
-            <button className="btn btn-ghost w-full" onClick={() => onChange([...list, {id: uid('i_'), name: '', price: 0}])}>
+            <button className="btn btn-ghost w-full"
+                    onClick={() => onChange([...list, {id: uid('i_'), name: '', price: 0}])}>
                 + 加一種{unit}
             </button>
         </>
@@ -911,7 +1020,12 @@ function StatsPanel({
     }
 
     async function remove(id: string, label: string) {
-        const input = await ask(`刪除 ${label} 的訂單？`, {ok: '刪除', password: !!week?.hasPassword, hint: pwHint(week?.owner), check: (v) => api.admin.deleteOrder(pw, id, v)})
+        const input = await ask(`刪除 ${label} 的訂單？`, {
+            ok: '刪除',
+            password: !!week?.hasPassword,
+            hint: pwHint(week?.owner),
+            check: (v) => api.admin.deleteOrder(pw, id, v)
+        })
         if (input === null) return
         toast.show('訂單已刪除')
         load()
@@ -921,23 +1035,26 @@ function StatsPanel({
         <div className="flex flex-col gap-6">
             <div className="flex flex-wrap items-center gap-3">
                 {options.length > 0 && (
-                <label className="max-w-full max-md:w-full">
-                    <span className="sr-only">選擇哪一週</span>
-                    <select className="w-auto max-w-full rounded-full py-2 pl-4 font-bold shadow-pop-sm focus:shadow-pop-sm focus:border-yolk-deep max-md:w-full" value={weekId}
+                    <label className="max-w-full max-md:w-full">
+                        <span className="sr-only">選擇哪一週</span>
+                        <select
+                            className="w-auto max-w-full rounded-full py-2 pl-4 font-bold shadow-pop-sm focus:shadow-pop-sm focus:border-yolk-deep max-md:w-full"
+                            value={weekId}
                             onChange={(e) => setWeekId(e.target.value)}>
-                        {options.map((w) => (
-                            <option key={w.id} value={w.id}>
-                                {w.private ? `【${secretName(w.kind)}】` : isBonus(w.kind) ? `【${UNIT[w.kind]}${w.mode === 'group' ? '揪團' : '抖內'}】` : ''}{w.shop || '未命名'}（{formatDay(w.deadline)}截止）
-                            </option>
-                        ))}
-                    </select>
-                </label>
+                            {options.map((w) => (
+                                <option key={w.id} value={w.id}>
+                                    {w.private ? `【${secretName(w.kind)}】` : isBonus(w.kind) ? `【${UNIT[w.kind]}${w.mode === 'group' ? '揪團' : '抖內'}】` : ''}{w.shop || '未命名'}（{formatDay(w.deadline)}截止）
+                                </option>
+                            ))}
+                        </select>
+                    </label>
                 )}
                 <button className="btn inline-flex items-center gap-1.5" onClick={() => setHistory(true)}>
                     <ClockIcon/>歷史訂單
                 </button>
                 {week && (
-                    <span className={`pill ml-0 border-3 px-3.5 py-1 font-bold ${isClosed(week.deadline) ? 'text-stamp-dark' : 'bg-scallion-soft text-scallion'}`}>
+                    <span
+                        className={`pill ml-0 border-3 px-3.5 py-1 font-bold ${isClosed(week.deadline) ? 'text-stamp-dark' : 'bg-scallion-soft text-scallion'}`}>
             {isClosed(week.deadline) ? '已截止' : `收單中，${formatDeadline(week.deadline)} 截止`}
           </span>
                 )}
@@ -1031,32 +1148,33 @@ function StatsPanel({
                             )}
                         </section>
                     ) : (
-                    <section className="card">
-                        <h2>各便當數量</h2>
-                        <ul className="flex flex-col gap-3.5">
-                            {stats.items.map((s) => (
-                                <li
-                                    key={s.itemId}
-                                    className={`grid grid-cols-[minmax(7em,12em)_1fr_3em] items-center gap-x-3 gap-y-1 max-md:grid-cols-[1fr_auto] ${s.count === 0 ? 'text-soy-soft' : ''}`}
-                                >
+                        <section className="card">
+                            <h2>各便當數量</h2>
+                            <ul className="flex flex-col gap-3.5">
+                                {stats.items.map((s) => (
+                                    <li
+                                        key={s.itemId}
+                                        className={`grid grid-cols-[minmax(7em,12em)_1fr_3em] items-center gap-x-3 gap-y-1 max-md:grid-cols-[1fr_auto] ${s.count === 0 ? 'text-soy-soft' : ''}`}
+                                    >
                   <span>
                     {s.name}
                       {s.price > 0 && <span className="ml-1.5 text-sm text-soy-soft">${s.price}</span>}
                   </span>
-                                    <span
-                                        className="h-[22px] overflow-hidden rounded-full border-2 border-soy bg-yolk-soft max-md:col-span-full max-md:row-start-2">
+                                        <span
+                                            className="h-[22px] overflow-hidden rounded-full border-2 border-soy bg-yolk-soft max-md:col-span-full max-md:row-start-2">
                     <span
                         className={`block h-full bg-stamp transition-[width] duration-500 ease-[cubic-bezier(0.3,1.3,0.5,1)] ${s.count === 0 ? '' : 'border-r-2 border-soy'}`}
                         style={{width: `${(s.count / maxCount) * 100}%`}}
                     />
                   </span>
-                                    <span className="text-right font-num font-semibold tabular-nums">{s.count}</span>
-                                    {s.people.length > 0 && <span
-                                        className="col-[2/-1] -mt-1.5 text-sm text-soy-soft max-md:col-span-full max-md:mt-0">{s.people.join('、')}</span>}
-                                </li>
-                            ))}
-                        </ul>
-                    </section>
+                                        <span
+                                            className="text-right font-num font-semibold tabular-nums">{s.count}</span>
+                                        {s.people.length > 0 && <span
+                                            className="col-[2/-1] -mt-1.5 text-sm text-soy-soft max-md:col-span-full max-md:mt-0">{s.people.join('、')}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
                     )}
 
                     <section className="card">
@@ -1108,7 +1226,8 @@ function ClockIcon() {
     return (
         <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
             <circle cx="10" cy="10" r="8" fill="var(--color-yolk)" stroke="currentColor" strokeWidth="2"/>
-            <path d="M10 5.5 V10 L13 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 5.5 V10 L13 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                  strokeLinejoin="round"/>
         </svg>
     )
 }
@@ -1128,10 +1247,12 @@ function HistoryDialog({weeks, current, onPick, onClose}: {
     const times = new Map<string, number>()
     for (const w of weeks) times.set(`${w.kind}|${w.shop}`, (times.get(`${w.kind}|${w.shop}`) ?? 0) + 1)
     return (
-        <div className="fixed inset-0 z-60 grid place-items-center bg-soy/50 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}
+        <div className="fixed inset-0 z-60 grid place-items-center bg-soy/50 p-4"
+             onClick={(e) => e.target === e.currentTarget && onClose()}
              onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-            <div className="relative flex max-h-[calc(100dvh-32px)] w-full max-w-[40rem] animate-pop flex-col gap-4 rounded-card border-3 border-soy bg-rice p-5 shadow-pop max-md:p-4"
-                 role="dialog" aria-label="歷史訂單">
+            <div
+                className="relative flex max-h-[calc(100dvh-32px)] w-full max-w-[40rem] animate-pop flex-col gap-4 rounded-card border-3 border-soy bg-rice p-5 shadow-pop max-md:p-4"
+                role="dialog" aria-label="歷史訂單">
                 <button
                     className="absolute -top-4 -right-4 size-11 cursor-pointer rounded-full border-3 border-soy bg-rice text-[1.6rem] leading-none text-soy hover:bg-stamp hover:text-rice"
                     onClick={onClose} aria-label="關閉" autoFocus
@@ -1139,7 +1260,9 @@ function HistoryDialog({weeks, current, onPick, onClose}: {
                     ×
                 </button>
                 <h2 className="mb-0">歷史訂單</h2>
-                <div className="inline-flex self-start overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:self-stretch" role="radiogroup" aria-label="哪一種團">
+                <div
+                    className="inline-flex self-start overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm max-md:self-stretch"
+                    role="radiogroup" aria-label="哪一種團">
                     {(['all', 'bento', 'drink', 'snack'] as const).map((k, i) => (
                         <button key={k} role="radio" aria-checked={kind === k} onClick={() => setKind(k)}
                                 className={`${TAB} ${i ? 'border-l-3 border-soy' : ''} aria-checked:bg-soy aria-checked:text-yolk`}>
@@ -1161,11 +1284,16 @@ function HistoryDialog({weeks, current, onPick, onClose}: {
                                         className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-yolk-soft ${w.id === current ? 'bg-yolk-soft' : ''}`}
                                         onClick={() => onPick(w.id)}
                                     >
-                                        <span className="w-[6.6em] shrink-0 font-num whitespace-nowrap text-soy-soft tabular-nums max-md:w-[6.2em] max-md:text-sm">{formatDay(w.deadline)}</span>
-                                        <span className={`pill ml-0 shrink-0 border-soy ${KIND_PILL[w.kind]}`}>{UNIT[w.kind]}</span>
-                                        <span className="min-w-0 flex-1 truncate font-bold">{w.private && <LockIcon size={18} className="mr-1 inline-block align-[-0.12em]"/>}{w.shop || '未命名'}</span>
+                                        <span
+                                            className="w-[6.6em] shrink-0 font-num whitespace-nowrap text-soy-soft tabular-nums max-md:w-[6.2em] max-md:text-sm">{formatDay(w.deadline)}</span>
+                                        <span
+                                            className={`pill ml-0 shrink-0 border-soy ${KIND_PILL[w.kind]}`}>{UNIT[w.kind]}</span>
+                                        <span className="min-w-0 flex-1 truncate font-bold">{w.private &&
+                                            <LockIcon size={18}
+                                                      className="mr-1 inline-block align-[-0.12em]"/>}{w.shop || '未命名'}</span>
                                         {n > 1 && <span className="shrink-0 text-sm text-stamp-dark">訂過 {n} 次</span>}
-                                        {who && <span className="shrink-0 text-sm text-soy-soft max-md:hidden">{who}</span>}
+                                        {who &&
+                                            <span className="shrink-0 text-sm text-soy-soft max-md:hidden">{who}</span>}
                                     </button>
                                 </li>
                             )

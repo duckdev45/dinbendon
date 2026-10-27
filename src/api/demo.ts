@@ -177,6 +177,15 @@ export function createDemoApi(): Api {
         db.orders = db.orders.filter((o) => o.id !== orderId)
         save(db)
       },
+      async deleteWeek(_pw, weekId, roundPassword, secret) {
+        await wait()
+        const db = load()
+        checkPassword(db, weekId, roundPassword)
+        checkSecret(db, weekId, secret)
+        db.weeks = db.weeks.filter((w) => w.id !== weekId)
+        db.orders = db.orders.filter((o) => o.weekId !== weekId)
+        save(db)
+      },
     },
   }
 }

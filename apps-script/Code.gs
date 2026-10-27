@@ -265,6 +265,24 @@ var ACTIONS = {
       return null;
     });
   },
+
+  // 整團刪掉：菜單和這團所有訂單，要開團密碼（喝飲料不揪還要通關密碼）
+  adminDeleteWeek: function (p) {
+    return withLock_(function () {
+      var weeks = sheet_('weeks');
+      var rows = readRows_(weeks, WEEK_COLS);
+      var hit = -1;
+      for (var i = 0; i < rows.length; i++) if (rows[i].id === p.weekId) { hit = i; break; }
+      if (hit < 0) return null;
+      checkPassword_(rows[hit], p.roundPassword);
+      checkSecret_(rows[hit], p.secret);
+      var orders = sheet_('orders');
+      var list = readRows_(orders, ORDER_COLS);
+      for (var j = list.length - 1; j >= 0; j--) if (list[j].weekId === p.weekId) orders.deleteRow(j + 2);
+      weeks.deleteRow(hit + 2);
+      return null;
+    });
+  },
 };
 
 // ───────────────────────── 第一次使用
