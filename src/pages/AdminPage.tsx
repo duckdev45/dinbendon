@@ -6,7 +6,7 @@ import {SlotMachine} from '../components/SlotMachine'
 import {useToast} from '../components/Toast'
 import {exportExcel} from '../lib/excel'
 import {shrinkImage, uid} from '../lib/image'
-import {MAX_PRICE, presets} from '../shops'
+import {MAX_PRICE, parseBulk, presets} from '../shops'
 import {currentRounds, endsEarly, isBonus, privateRounds, recentRounds, secretName, statsPick} from '../lib/drink'
 import {computeStats, drinkSummary, orderLabel, orderPrice, shopText} from '../lib/stats'
 import {
@@ -26,7 +26,7 @@ export function AdminPage() {
     return <AdminConsole pw="" toast={toast}/>
 }
 
-type Tab = 'menu' | 'drink' | 'snack' | 'stats'
+type Tab = 'menu' | 'drink' | 'snack' | 'shops' | 'stats'
 
 const UNIT = {bento: '便當', drink: '飲料', snack: '點心'} as const
 const ICON = {bento: 'bowl', drink: 'boba', snack: 'wheel'} as const
@@ -42,9 +42,11 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
     // 從點餐頁「開便當團 / 開飲料團 / 開點心團」過來會帶 #/admin/menu、#/admin/drink、#/admin/snack
     const [tab, setTab] = useState<Tab>(() => {
         const t = window.location.hash.split('/')[2]
-        return t === 'menu' || t === 'drink' || t === 'snack' ? t : 'stats'
+        return t === 'menu' || t === 'drink' || t === 'snack' || t === 'shops' ? t : 'stats'
     })
-    const kind: RoundKind = tab === 'drink' || tab === 'snack' ? tab : 'bento'
+    // 「菜單」分頁給行政統一維護店家，裡面再分便當／飲料／點心
+    const [shopKind, setShopKind] = useState<RoundKind>('bento')
+    const kind: RoundKind = tab === 'shops' ? shopKind : tab === 'drink' || tab === 'snack' ? tab : 'bento'
     const [weeks, setWeeks] = useState<Week[] | null>(null)
     const [latest, setLatest] = useState<Snapshot | null>(null)
     // null = 舊版 Code.gs 沒有 shops 表
@@ -104,10 +106,28 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                             {UNIT[t === 'menu' ? 'bento' : t]}
                         </button>
                     ))}
+                    <button role="tab" className={`${TAB} border-l-3 border-soy`} aria-selected={tab === 'shops'}
+                            onClick={() => (setTab('shops'), setPriv(null))}>
+                        菜單
+                    </button>
                 </div>
             </div>
             {!weeks ? (
                 <p className="text-soy-soft">載入中…</p>
+            ) : tab === 'shops' ? (
+                <>
+                    <div className="mb-4 inline-flex overflow-hidden rounded-full border-3 border-soy bg-rice shadow-pop-sm"
+                         role="tablist">
+                        {(['bento', 'drink', 'snack'] as const).map((k, i) => (
+                            <button key={k} role="tab" className={`${TAB} ${i ? 'border-l-3 border-soy' : ''}`}
+                                    aria-selected={shopKind === k} onClick={() => setShopKind(k)}>
+                                {UNIT[k]}
+                            </button>
+                        ))}
+                    </div>
+                    <ShopShelf key={kind} kind={kind} shops={shops} ask={ask} pw={pw} toast={toast}
+                               onSaved={setShopRows}/>
+                </>
             ) : tab !== 'stats' ? (
                 <>
                     {privList.length > 0 && (
@@ -142,8 +162,6 @@ function AdminConsole({pw, toast}: { pw: string; toast: ReturnType<typeof useToa
                             await loadWeeks()
                         }}
                     />
-                    <ShopShelf key={kind} kind={kind} shops={shops} ask={ask} pw={pw} toast={toast}
-                               onSaved={setShopRows}/>
                 </>
             ) : (
                 <StatsPanel pw={pw} weeks={weeks} initial={latest} ask={ask} toast={toast}
@@ -293,17 +311,8 @@ function MenuEditor({
         }
     }
 
-    /** 一行一個；照抄店家菜單時後面帶的價格會當成單價 */
     function applyBulk() {
-        const parsed = bulk
-            .split('\n')
-            .map((l) => l.trim())
-            .filter(Boolean)
-            .map((l) => {
-                const m = l.match(/^(.*?)[\s:：$＄,，]*(\d+)\s*元?$/)
-                return {id: uid('i_'), name: (m ? m[1] : l).trim(), price: m ? Number(m[2]) : 0}
-            })
-            .filter((it) => it.name)
+        const parsed = parseBulk(bulk).map(([name, price]) => ({id: uid('i_'), name, price}))
         if (parsed.length === 0) return toast.show('沒有讀到品項，一行寫一個，例如「排骨便當」', 'error')
         set('items', [...draft.items, ...parsed])
         setBulk('')
@@ -562,7 +571,7 @@ function MenuEditor({
                                              value={draft.shop} onPick={pickShop} locked={!isNew}/>
                             )
                         ) : (
-                            <p className="text-soy-soft">還沒有飲料店可以抽，先到下面「常用飲料店家」新增一家。</p>
+                            <p className="text-soy-soft">還沒有飲料店可以抽，先到「菜單」新增一家。</p>
                         )
                     ) : (
                         <>
@@ -714,9 +723,9 @@ function MenuEditor({
 
 // ───────────────────────── 常用店家
 
-type ShopDraft = { from: string; shop: string; imageUrl: string; items: MenuItem[]; addons: MenuItem[] }
+type ShopDraft = { from: string; shop: string; phone: string; note: string; imageUrl: string; items: MenuItem[]; addons: MenuItem[] }
 
-/** 每個分頁底下維護常用店家：點一家改菜單、改名、刪掉，或新增一家；開過的團會自動算進來 */
+/** 「菜單」分頁：左邊店家清單，右邊點一家改菜單、改名、刪掉，或新增一家；開過的團會自動算進來 */
 function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
     kind: RoundKind
     shops: ShopPreset[]
@@ -730,7 +739,11 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
     // null = 沒在編輯；from = 改的是哪一家（'' = 新增）
     const [edit, setEdit] = useState<ShopDraft | null>(null)
     const [busy, setBusy] = useState(false)
+    // null = 收起
+    const [bulk, setBulk] = useState<string | null>(null)
     const fileRef = useRef<HTMLInputElement>(null)
+    // 剛打開時的樣子，切到別家前比對有沒有改過
+    const base = useRef('')
     const set = <K extends keyof ShopDraft>(k: K, v: ShopDraft[K]) => setEdit((d) => d && {...d, [k]: v})
     const toItems = (rows: [string, number][], prefix: string) => rows.map(([name, price]) => ({
         id: uid(prefix),
@@ -739,14 +752,21 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
     }))
     const pairs = (list: MenuItem[]) => list.filter((it) => it.name.trim()).map((it): [string, number] => [it.name.trim(), it.price])
 
-    function open(p?: ShopPreset) {
-        setEdit({
+    async function open(p?: ShopPreset) {
+        if (edit && JSON.stringify(edit) !== base.current &&
+            (await ask(`「${edit.shop || '新店家'}」還沒儲存，\n改的地方會不見。`, {ok: '不存了'})) === null) return
+        const d = {
             from: p?.shop ?? '',
             shop: p?.shop ?? '',
+            phone: p?.phone ?? '',
+            note: p?.note ?? '',
             imageUrl: p?.imageUrl ?? '',
             items: toItems(p?.items ?? [], 'i_'),
             addons: toItems(p?.addons ?? [], 'a_')
-        })
+        }
+        base.current = JSON.stringify(d)
+        setBulk(null)
+        setEdit(d)
     }
 
     async function send(hidden: boolean) {
@@ -769,9 +789,16 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
                 imageUrl: edit.imageUrl,
                 items: pairs(edit.items),
                 addons: drink ? pairs(edit.addons) : [],
+                phone: edit.phone.trim(),
+                note: edit.note.trim(),
                 hidden,
             }, hidden ? undefined : edit.from || undefined)
             onSaved(rows)
+            // 舊版 Code.gs 不認得 phone、note，回來的 shops 沒有這兩欄
+            if (!hidden && (edit.phone.trim() || edit.note.trim()) && rows.find((r) => r.kind === kind && r.shop === shop)?.note === undefined) {
+                setEdit(null)
+                return toast.show('後端 Code.gs 是舊版，電話、備註沒存到，請先貼上新版並部署', 'error')
+            }
             setEdit(null)
             toast.show(hidden ? `刪掉「${shop}」了` : '常用店家已儲存', 'ok', ICON[kind])
         } catch (e) {
@@ -795,19 +822,35 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
     }
 
     return (
-        <section className="card mt-6 flex flex-col gap-3.5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="mb-0">常用{unit}店家<span
-                    className="ml-2 text-sm font-normal text-soy-soft">開過的團會自動加進來</span></h2>
-                {!edit && <button className="link-btn" onClick={() => open()}>+ 新增店家</button>}
-            </div>
+        <section className="grid grid-cols-[15rem_1fr] items-start gap-6 max-lg:grid-cols-1">
+            {/* 左右兩張卡片；菜單很長時左邊清單跟著捲 */}
+            <nav className="card flex flex-col gap-1.5 lg:sticky lg:top-4" aria-label={`${unit}店家`}>
+                <h2 className="mb-0">{unit}店家</h2>
+                <p className="mb-1 text-sm text-soy-soft">開過的團會自動加進來</p>
+                {shops.map((p) => (
+                    <button key={p.shop} aria-current={edit?.from === p.shop}
+                            className="flex cursor-pointer items-baseline justify-between gap-2 rounded-xl px-3 py-2 text-left text-soy hover:bg-yolk/40 aria-[current=true]:bg-soy aria-[current=true]:text-yolk"
+                            onClick={() => open(p)}>
+                        <span className="min-w-0 break-words">{p.shop}</span>
+                        <span className="flex-none text-sm opacity-70">{p.items.length} 種</span>
+                    </button>
+                ))}
+                <button className={`btn mt-1 ${edit && !edit.from ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => open()}>+ 新增店家
+                </button>
+            </nav>
 
             {edit ? (
-                <div className="flex flex-col gap-3.5">
+                <div className="card flex min-w-0 flex-col gap-3.5">
                     <div className="flex flex-wrap items-end gap-4">
                         <label className="field min-w-0 flex-1">
                             <span className="field-label req">店家名稱</span>
                             <input value={edit.shop} onChange={(e) => set('shop', e.target.value)} maxLength={40}/>
+                        </label>
+                        <label className="field w-44 max-md:w-full">
+                            <span className="field-label">電話</span>
+                            <input type="tel" value={edit.phone} onChange={(e) => set('phone', e.target.value)}
+                                   maxLength={30} autoComplete="off" placeholder="02-1234-5678"/>
                         </label>
                         <div className="flex items-center gap-3">
                             {edit.imageUrl &&
@@ -822,7 +865,30 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
                                    onChange={(e) => pickFile(e.target.files?.[0])}/>
                         </div>
                     </div>
-                    <h3 className="mb-0"><span className="req">{unit}種類</span></h3>
+                    <label className="field">
+                        <span className="field-label">備註</span>
+                        <textarea rows={2} value={edit.note} onChange={(e) => set('note', e.target.value)}
+                                  maxLength={200} placeholder="例如：滿 1000 外送、週日公休"/>
+                    </label>
+                    <div className="flex items-baseline justify-between">
+                        <h3 className="mb-0"><span className="req">{unit}種類</span></h3>
+                        <button className="link-btn" onClick={() => setBulk((b) => (b === null ? '' : null))}>
+                            {bulk === null ? '從文字貼上' : '收起'}
+                        </button>
+                    </div>
+                    {bulk !== null && (
+                        <div className="flex flex-col items-start gap-2.5">
+                            <textarea rows={5} value={bulk} onChange={(e) => setBulk(e.target.value)}
+                                      placeholder={`一行一種，後面可以帶價錢\n${{bento: '排骨便當 100\n雞腿便當 $110', drink: '珍珠奶茶 60\n四季春 $40', snack: '紅豆 15\n奶油 $20'}[kind]}`}/>
+                            <button className="btn" onClick={() => {
+                                const rows = parseBulk(bulk)
+                                if (rows.length === 0) return toast.show(`沒有讀到品項，一行寫一個，例如「${drink ? '珍珠奶茶' : '排骨便當'}」`, 'error')
+                                set('items', [...edit.items, ...toItems(rows, 'i_')])
+                                setBulk(null)
+                                toast.show(`加入 ${rows.length} 種${unit}`)
+                            }}>加入清單</button>
+                        </div>
+                    )}
                     <ItemRows list={edit.items} onChange={(v) => set('items', v)} unit={unit}
                               max={kind === 'bento' ? MAX_PRICE : undefined}/>
                     {drink && (
@@ -839,18 +905,8 @@ function ShopShelf({kind, shops, ask, pw, toast, onSaved}: {
                                 disabled={busy}>{busy ? '儲存中…' : '儲存'}</button>
                     </div>
                 </div>
-            ) : shops.length === 0 ? (
-                <p className="text-soy-soft">還沒有。開過一次{unit}團就會出現在這裡，也可以先新增。</p>
             ) : (
-                <ul className="flex flex-wrap gap-2.5">
-                    {shops.map((p) => (
-                        <li key={p.shop}>
-                            <button className="btn btn-ghost" onClick={() => open(p)}>
-                                {p.shop}<span className="ml-1.5 text-sm text-soy-soft">{p.items.length} 種</span>
-                            </button>
-                        </li>
-                    ))}
-                </ul>
+                <p className="card text-soy-soft">{shops.length ? '點左邊的店家看菜單、改價錢。' : `還沒有${unit}店家。開過一次${unit}團就會出現在這裡，也可以先新增。`}</p>
             )}
         </section>
     )

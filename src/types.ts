@@ -80,6 +80,10 @@ export interface ShopPreset {
   imageUrl: string
   items: [name: string, price: number][]
   addons: [name: string, price: number][]
+  /** 訂餐電話；只存在 shops 表，舊版 Code.gs 沒有 */
+  phone: string
+  /** 備註，例如滿多少外送；同上 */
+  note: string
 }
 
 /** 後台手動維護的常用店家（shops 工作表）；hidden = 刪掉 */

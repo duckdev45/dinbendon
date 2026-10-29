@@ -13,7 +13,7 @@
 var WEEK_COLS = ['id', 'shop', 'imageUrl', 'deadline', 'items', 'note', 'createdAt', 'updatedAt', 'kind', 'addons', 'host', 'mode', 'password', 'owner', 'secret'];
 var ORDER_COLS = ['id', 'weekId', 'name', 'itemId', 'itemName', 'createdAt', 'updatedAt', 'options', 'addonIds']; // 一人一份；金額照菜單單價＋加料算
 // 後台手動維護的常用店家，一種團一家一列；開過的團前端會自動算進常用店家，不寫這張表
-var SHOP_COLS = ['kind', 'shop', 'imageUrl', 'items', 'addons', 'hidden', 'updatedAt'];
+var SHOP_COLS = ['kind', 'shop', 'imageUrl', 'items', 'addons', 'hidden', 'updatedAt', 'phone', 'note'];
 var COLS = { weeks: WEEK_COLS, orders: ORDER_COLS, shops: SHOP_COLS };
 
 // bento 每週便當；drink / snack 限時的飲料團、點心團（舊資料 kind 空白 = 便當）
@@ -235,6 +235,7 @@ var ACTIONS = {
       put({
         kind: s.kind, shop: name, imageUrl: String(s.imageUrl || ''), items: pairs_(s.items),
         addons: pairs_(s.kind === 'drink' ? s.addons : []), hidden: s.hidden ? '1' : '', updatedAt: now,
+        phone: String(s.phone || '').trim().slice(0, 30), note: String(s.note || '').trim().slice(0, 200),
       });
       return allShops_();
     });
@@ -307,7 +308,7 @@ function allShops_() {
   return readRows_(sheet_('shops'), SHOP_COLS).map(function (r) {
     return {
       kind: r.kind, shop: r.shop, imageUrl: r.imageUrl, items: parseList_(r.items), addons: parseList_(r.addons),
-      hidden: r.hidden === '1', updatedAt: r.updatedAt,
+      hidden: r.hidden === '1', updatedAt: r.updatedAt, phone: r.phone, note: r.note,
     };
   });
 }

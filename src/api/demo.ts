@@ -164,7 +164,7 @@ export function createDemoApi(): Api {
         const put = (row: ShopRow) => {
           db.shops = [...(db.shops ?? []).filter((r) => !(r.kind === row.kind && r.shop === row.shop)), row]
         }
-        if (from && from !== name) put({ kind: shop.kind, shop: from, imageUrl: '', items: [], addons: [], hidden: true, updatedAt })
+        if (from && from !== name) put({ kind: shop.kind, shop: from, imageUrl: '', items: [], addons: [], phone: '', note: '', hidden: true, updatedAt })
         put({ ...shop, shop: name, updatedAt })
         save(db)
         return db.shops!

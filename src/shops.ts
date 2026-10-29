@@ -14,14 +14,27 @@ export function presets(kind: RoundKind, weeks: Week[], rows: ShopRow[]): ShopPr
     const cur = best.get(p.shop)
     if (!cur || at > cur.at) best.set(p.shop, { at, hidden, p })
   }
+  // 電話、備註只存在 shops 表，開過的團比較新也要留著
+  const extra = new Map(rows.filter((r) => r.kind === kind).map((r) => [r.shop, { phone: r.phone ?? '', note: r.note ?? '' }]))
   const pairs = (list: { name: string; price: number }[]) => list.map((it): [string, number] => [it.name, it.price])
   // 先放 shops 表，清單順序照表上的
   for (const r of rows) {
-    if (r.kind === kind) offer(r.updatedAt, r.hidden, { kind, shop: r.shop, imageUrl: r.imageUrl, items: r.items, addons: r.addons })
+    if (r.kind === kind) offer(r.updatedAt, r.hidden, { kind, shop: r.shop, imageUrl: r.imageUrl, items: r.items, addons: r.addons, phone: '', note: '' })
   }
   for (const w of weeks) {
     if (w.kind !== kind || !w.shop.trim()) continue
-    offer(w.updatedAt ?? '', false, { kind, shop: w.shop.trim(), imageUrl: w.imageUrl, items: pairs(w.items), addons: pairs(w.addons ?? []) })
+    offer(w.updatedAt ?? '', false, { kind, shop: w.shop.trim(), imageUrl: w.imageUrl, items: pairs(w.items), addons: pairs(w.addons ?? []), phone: '', note: '' })
   }
-  return [...best.values()].filter((x) => !x.hidden).map((x) => x.p)
+  return [...best.values()].filter((x) => !x.hidden).map((x) => ({ ...x.p, ...extra.get(x.p.shop) }))
+}
+
+/** 從文字貼上：一行一個；照抄店家菜單時後面帶的價格會當成單價 */
+export function parseBulk(text: string): [string, number][] {
+  return text
+    .split('\n')
+    .map((l): [string, number] => {
+      const m = l.trim().match(/^(.*?)[\s:：$＄,，]*(\d+)\s*元?$/)
+      return [(m ? m[1] : l).trim(), m ? Number(m[2]) : 0]
+    })
+    .filter(([name]) => name)
 }

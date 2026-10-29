@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { presets } from '../src/shops.ts'
+import { parseBulk, presets } from '../src/shops.ts'
 import type { ShopRow, Week } from '../src/types.ts'
 
 const week = (p: Partial<Week>) =>
@@ -10,7 +10,7 @@ const row = (p: Partial<ShopRow>) =>
 
 test('開過的團自動變常用店家：同一家取最後一次的菜單', () => {
   const older = week({ id: 'w1', items: [{ id: 'a', name: '紅豆', price: 12 }], updatedAt: '2026-10-14T07:00:00.000Z' })
-  assert.deepEqual(presets('snack', [week({}), older], []), [{ kind: 'snack', shop: '巷口車輪餅', imageUrl: 'pic', items: [['紅豆', 15]], addons: [] }])
+  assert.deepEqual(presets('snack', [week({}), older], []), [{ kind: 'snack', shop: '巷口車輪餅', imageUrl: 'pic', items: [['紅豆', 15]], addons: [], phone: '', note: '' }])
   // 別種團、沒填店名的不算
   assert.deepEqual(presets('snack', [week({ kind: 'drink' }), week({ shop: ' ' })], []), [])
   // 店名前後多打空白也算同一家
@@ -40,4 +40,19 @@ test('刪掉的常用店家不出現，之後又用同一家開團就回來', ()
   assert.equal(presets('bento', [], [...seeded.filter((p) => p.shop !== s), row({ kind: 'bento', shop: s, hidden: true })]).some((p) => p.shop === s), false)
   assert.equal(presets('snack', [week({})], [row({ hidden: true })]).length, 0)
   assert.equal(presets('snack', [week({ updatedAt: '2026-10-21T09:00:00.000Z' })], [row({ hidden: true })]).length, 1)
+})
+
+test('從文字貼上：一行一種，後面的數字當單價', () => {
+  assert.deepEqual(parseBulk('排骨便當 100\n\n 雞腿便當：$110元 \n滷肉飯\n大腸麵線,65'), [['排骨便當', 100], ['雞腿便當', 110], ['滷肉飯', 0], ['大腸麵線', 65]])
+  assert.deepEqual(parseBulk(' \n$50\n'), [])
+})
+
+test('店家電話、備註只存在 shops 表：開過的團比較新也留著', () => {
+  const r = row({ phone: '02-2345-6789', note: '滿 1000 外送' })
+  assert.equal(presets('snack', [], [r])[0].phone, '02-2345-6789')
+  const p = presets('snack', [week({ updatedAt: '2026-10-21T09:00:00.000Z' })], [r])[0]
+  assert.deepEqual([p.phone, p.note], ['02-2345-6789', '滿 1000 外送'])
+  // 舊版 Code.gs 沒有 phone、note 欄
+  const old = presets('snack', [], [row({ phone: undefined, note: undefined })])[0]
+  assert.deepEqual([old.phone, old.note], ['', ''])
 })
