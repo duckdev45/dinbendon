@@ -197,7 +197,7 @@ export function OrderPage() {
                 <div className="grid w-full max-w-[960px] grid-cols-3 gap-6 max-md:grid-cols-1">
                     {(
                         [
-                            ['#/admin/menu', <Bowl key="b" size={170}/>, '開便當團', '一人一個，週五 13:00 截止'],
+                            ['#/admin/menu', <Bowl key="b" size={170}/>, '開便當團', '週二的便當，一人一個'],
                             ['#/admin/drink', <BobaCup key="d" size={130}/>, '開飲料團', '抖內或揪團，拉霸抽今天喝哪家'],
                             ['#/admin/snack', <WheelCake key="s" size={150}/>, '開點心團', '下午茶，抖內或揪團，菜單自己填'],
                         ] as const
